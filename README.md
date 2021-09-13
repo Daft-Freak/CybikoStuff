@@ -12,3 +12,12 @@ cd tools
 cmake -G Ninja -B build
 ninja -C build
 ```
+
+## Toolchain
+GCC/newlib based toolchain build script, linker script, startup code and CMake config
+
+To build the toolchain to `toolchain/prefix`: (`toolchain/build` can be deleted after this completes.)
+```
+cd toolchain
+./build.sh
+```
