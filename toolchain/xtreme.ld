@@ -59,7 +59,7 @@ SECTIONS
     } > ext_ram
 
     /* stack in on-chip ram */
-    .stack :
+    .stack (NOLOAD) :
     {
         *(.stack)
     } > ram
