@@ -31,3 +31,9 @@ C++ wrappers for accessing the CPU's peripherals.
 Cybiko Xtreme emulator. Based on some code from ~2019 and fixed/cleaned up until it actually worked.
 
 Requires a boot rom dump in `data/xtreme-rom.bin` and a flash dump in `data/xtreme-flash.bin`. Can boot files generated with the toolcahin/libs with `--boot file.boot`
+
+## Test
+Test code using the libs/toolchain
+
+### InstructionTest
+Tests instruction behaviour, used to fix a pile of bugs in the emulator before pushing it here.
