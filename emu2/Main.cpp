@@ -301,6 +301,7 @@ int main(int argc, char *args[])
     const bool xtreme = true; // TODO maybe?
     bool persistExtRAM = true;
     std::string serialBootFile;
+    std::string cyIDStr = "FAKECYB";
 
     bool benchmarkMode = false;
     int64_t benchmarkCycles = 0;
@@ -315,6 +316,15 @@ int main(int argc, char *args[])
         {
             benchmarkMode = true;
             benchmarkCycles = clockFreq * std::stoi(args[++i]);
+        }
+        else if(arg == "--cyid" && i + 1 < argc)
+        {
+            cyIDStr = args[++i];
+            if(cyIDStr.length() != 7)
+            {
+                std::cerr << "CyID should be 7 characters!\n";
+                cyIDStr.resize(7, 'A');
+            }
         }
     }
 
@@ -374,7 +384,7 @@ int main(int argc, char *args[])
     // change id for fun
     if(xtreme)
     {
-        uint32_t cyID = cyIDFromString("FAKECYB");
+        uint32_t cyID = cyIDFromString(cyIDStr);
 
         flash->write(0x7F818, cyID >> 24);
         flash->write(0x7F819, cyID >> 16);
