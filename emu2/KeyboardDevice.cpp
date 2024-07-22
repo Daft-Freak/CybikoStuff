@@ -1,5 +1,93 @@
 #include "KeyboardDevice.h"
 
+// 21 july 2020
+ClassicKeyboardDevice::ClassicKeyboardDevice()
+{
+    for(auto &v : keyData)
+        v = 0xFF;
+}
+
+uint8_t ClassicKeyboardDevice::read(uint32_t addr)
+{
+    uint8_t ret = 0;
+
+    // address bits 1-9 are the columns
+    for(int i = 1; i < 10; i++)
+    {
+        if(!(addr & (1 << i)))
+            ret |= keyData[i - 1];
+    }
+
+    return ret;
+}
+
+void ClassicKeyboardDevice::write(uint32_t addr, uint8_t val)
+{
+}
+
+void ClassicKeyboardDevice::updateKey(SDL_Keysym sym, bool down)
+{
+    static const int columns[]
+    {
+        -1, -1, -1, -1,  0,  5,  3,  2, // A-D
+         2,  3,  4,  5,  7,  6,  7,  8, // E-L
+         7,  6,  8,  8,  0,  3,  1,  4, // M-T
+         6,  4,  1,  2,  5,  1,  3,  1, // U-Z 1-2
+         2,  3,  4,  5,  6,  7,  8,  7, // 3-0
+         5,  0,  6,  3,  2,  7,  8,  3, // Enter, Esc, Backspace, Tab, Space, -, =, [
+         4,  5, -1,  5,  8,  0,  8,  9, // ], \, ??, ;, ', `, comma, .
+         6, -1,  6,  5,  2,  3,  2,  1, // /, caps, F1-6
+         0, -1, -1, -1, -1, -1, -1, -1, // F7-12, printscreen, scroll lk
+
+        -1,  1, -1, -1,  0, -1, -1,  4, // pause, ins, home, pgup, del, end, pgdn, right
+         0,  4,  1,// left, down, up
+    };
+
+    static const int rows[]
+    {
+        -1, -1, -1, -1,  5,  6,  6,  5, // A-D
+         4,  5,  5,  5,  4,  5,  5,  5, // E-L
+         6,  6,  4,  3,  4,  4,  5,  4, // M-T
+         4,  6,  4,  6,  4,  6,  1,  3, // U-Z 1-2
+         3,  3,  3,  3,  3,  3,  2,  2, // 3-0
+         2,  1,  2,  2,  2,  0,  1,  7,
+         7,  7, -1,  1,  0,  6,  6,  1,
+         1, -1,  0,  0,  1,  0,  0,  0,
+         0, -1, -1, -1, -1, -1, -1, -1,
+        -1,  2, -1, -1,  2, -1, -1,  0,
+         3,  1,  1,
+    };
+
+    // select, help
+
+    int col = -1, row = -1;
+
+    if(sym.scancode <= SDL_SCANCODE_UP)
+    {
+        col = columns[sym.scancode];
+        row = rows[sym.scancode];
+    }
+    // map ctrl -> fn
+    else if(sym.scancode == SDL_SCANCODE_LCTRL || sym.scancode == SDL_SCANCODE_RCTRL)
+    {
+        col = 1;
+        row = 7;
+    }
+    else if(sym.scancode == SDL_SCANCODE_LSHIFT || sym.scancode == SDL_SCANCODE_RSHIFT)
+    {
+        col = 0;
+        row = 7;
+    }
+
+    if(col != -1)
+    {
+        if(down)
+            keyData[col] &= ~(1 << row);
+        else
+            keyData[col] |= (1 << row);
+    }
+}
+
 // 20 dec 2019
 XtremeKeyboardDevice::XtremeKeyboardDevice()
 {
