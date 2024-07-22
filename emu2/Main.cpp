@@ -309,9 +309,9 @@ int main(int argc, char *args[])
     {
         std::string arg(args[i]);
 
-        if(arg == "--boot")
+        if(arg == "--boot" && i + 1 < argc)
             serialBootFile = args[++i];
-        else if(arg == "--benchmark-time")
+        else if(arg == "--benchmark-time" && i + 1 < argc)
         {
             benchmarkMode = true;
             benchmarkCycles = clockFreq * std::stoi(args[++i]);
