@@ -211,7 +211,7 @@ int main(int argc, char *args[])
         return 1;
 
     // get data path
-    std::string dataPath = "../data/";
+    std::string dataPath = "data/";
 
     auto basePath = SDL_GetBasePath();
 
