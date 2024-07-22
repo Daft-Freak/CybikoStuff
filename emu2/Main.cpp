@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -286,7 +287,7 @@ int main(int argc, char *args[])
         return 1;
 
     // get data path
-    std::string dataPath = "data/";
+    std::string dataPath = "data/", deviceDataPath;
 
     auto basePath = SDL_GetBasePath();
 
@@ -365,6 +366,12 @@ int main(int argc, char *args[])
         serial1 = std::make_unique<Serial1>();
         cpu.setSerialDevice(1, serial1.get());
 
+        // load rom/flash/ram dumps
+        deviceDataPath = dataPath + cyIDStr + "/";
+
+        if(!std::filesystem::exists(deviceDataPath))
+            std::filesystem::create_directory(deviceDataPath);
+
         if(!cpu.loadROM((dataPath + "xtreme-rom.bin").c_str()))
         {
             std::cerr << "Failed to load ROM!\n";
@@ -374,7 +381,7 @@ int main(int argc, char *args[])
 
         // ram persistence for FS
         if(persistExtRAM)
-            extRAM->loadFile((dataPath + "exram.bin").c_str());
+            extRAM->loadFile((deviceDataPath + "exram.bin").c_str());
 
         // can still boot over serial
         if(!serialBootFile.empty())
@@ -481,7 +488,7 @@ int main(int argc, char *args[])
     }
 
     if(xtreme && persistExtRAM && !benchmarkMode)
-        extRAM->saveFile((dataPath + "exram.bin").c_str());
+        extRAM->saveFile((deviceDataPath + "exram.bin").c_str());
 
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(sdlRenderer);
