@@ -15,6 +15,7 @@ set(SOURCES
     Main.cpp
     MemoryDevice.cpp
     PCF8593.cpp
+    SerialFlash.cpp
     USBDevice.cpp
 )
 
