@@ -63,6 +63,7 @@ void LCDDevice::write(uint32_t addr, uint8_t val)
             break;
         case 1:
             control2 = val;
+            break;
         case 2:
             x = val;
             break;
