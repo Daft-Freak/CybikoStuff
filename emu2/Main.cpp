@@ -150,12 +150,13 @@ protected:
 };
 
 
-// log port at boot, cart port later (connected to SD card)
-// can also be used to boot things
-class Serial1 : public SerialDevice
+// used for logging and commands at boot
+// main serial port / Serial2 on classic
+// cart port / Serial1 on xtreme (used for SD card later)
+class BootSerial final : public SerialDevice
 {
 public:
-    Serial1()
+    BootSerial(int index) : index(index)
     {
     }
 
@@ -210,11 +211,11 @@ public:
                     bootBufLen = read + 9;
                 }
 
-                std::cout << "SERIAL1: " << logBuffer.str() << std::endl;
+                std::cout << "SERIAL" << index << ": " << logBuffer.str() << std::endl;
                 logBuffer.str("");
 
             }
-            else if(val == 0xFF) // probably doing SPI now
+            else if(val == 0xFF && index == 1) // probably doing SPI now
             {
                 std::cout << "Switching serial 1 to SD card...\n";
                 sdMode = true;
@@ -261,6 +262,8 @@ private:
 
         return crc;
     }
+
+    int index;
 
     // log port
     std::stringstream logBuffer;
@@ -342,7 +345,7 @@ int main(int argc, char *args[])
     std::unique_ptr<DS2401> serialNo;
     std::unique_ptr<IODevice> miscPortA;
 
-    std::unique_ptr<SerialDevice> serial1;
+    std::unique_ptr<SerialDevice> bootSerial;
 
     if(xtreme)
     {
@@ -363,8 +366,8 @@ int main(int argc, char *args[])
         cpu.addIODevice(IOPort::A, miscPortA.get());
         cpu.addIODevice(IOPort::F, rtc.get());
 
-        serial1 = std::make_unique<Serial1>();
-        cpu.setSerialDevice(1, serial1.get());
+        bootSerial = std::make_unique<BootSerial>(1);
+        cpu.setSerialDevice(1, bootSerial.get());
 
         // load rom/flash/ram dumps
         deviceDataPath = dataPath + cyIDStr + "/";
@@ -385,7 +388,7 @@ int main(int argc, char *args[])
 
         // can still boot over serial
         if(!serialBootFile.empty())
-            static_cast<Serial1 *>(serial1.get())->setBootFile(serialBootFile);
+            static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
     }
 
     // change id for fun
