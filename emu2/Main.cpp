@@ -13,6 +13,7 @@
 #include "LCDDevice.h"
 #include "MemoryDevice.h"
 #include "PCF8593.h"
+#include "SerialFlash.h"
 #include "USBDevice.h"
 
 // from usbcon.c
@@ -280,6 +281,66 @@ private:
     std::ifstream bootFile;
 };
 
+class Port1Classic final : public IODevice
+{
+public:
+    uint8_t read() override
+    {
+        // otherwise it immediately goes into standby mode
+        return 1 << 3;
+    }
+
+    void write(uint8_t val) override
+    {
+    }
+
+    void setDirection(uint8_t dir) override
+    {
+    }
+};
+
+// flash cs is on 4
+class Port3Classic final : public IODevice
+{
+public:
+    Port3Classic(SerialFlash &flash) : flash(flash) {}
+
+    uint8_t read() override
+    {
+        return 0x00;
+    }
+
+    void write(uint8_t val) override
+    {
+        flash.setCS(val & 0x10);
+    }
+
+    void setDirection(uint8_t dir) override
+    {
+    }
+
+private:
+    SerialFlash &flash;
+};
+
+class PortFClassic final : public IODevice
+{
+protected:
+    uint8_t read() override
+    {
+        // flash R/B
+        return 0x04;
+    }
+
+    void write(uint8_t val) override
+    {
+    }
+
+    void setDirection(uint8_t dir) override
+    {
+    }
+};
+
 int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
@@ -302,7 +363,7 @@ int main(int argc, char *args[])
     std::cout << "Data path: " << dataPath << "\n";
 
     // options
-    const bool xtreme = true; // TODO maybe?
+    bool xtreme = true;
     bool persistExtRAM = true;
     std::string serialBootFile;
     std::string cyIDStr = "FAKECYB";
@@ -330,22 +391,30 @@ int main(int argc, char *args[])
                 cyIDStr.resize(7, 'A');
             }
         }
+        else if(arg == "--classic")
+            xtreme = false;
     }
 
     // CPU init
     H8CPU cpu;
 
     auto lcd = std::make_unique<LCDDevice>();
-    auto usb = std::make_unique<USBDevice>();
     auto extRAM = std::make_unique<MemoryDevice>();
     std::unique_ptr<MemoryDevice> flash;
     std::unique_ptr<KeyboardDevice> keyboard;
 
     std::unique_ptr<PCF8593> rtc;
+
+    std::unique_ptr<SerialDevice> bootSerial;
+    
+    // xtreme
+    auto usb = std::make_unique<USBDevice>();
     std::unique_ptr<DS2401> serialNo;
     std::unique_ptr<IODevice> miscPortA;
 
-    std::unique_ptr<SerialDevice> bootSerial;
+    // classic
+    std::unique_ptr<SerialFlash> serialFlash;
+    std::unique_ptr<IODevice> classicPort1, classicPort3, classicPortF;
 
     if(xtreme)
     {
@@ -389,6 +458,50 @@ int main(int argc, char *args[])
         // can still boot over serial
         if(!serialBootFile.empty())
             static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
+    }
+    else
+    {
+        // this is a bit less stable as I don't actually have one
+
+        flash = std::make_unique<MemoryDevice>(0x3FFFF);
+        keyboard = std::make_unique<ClassicKeyboardDevice>();
+
+        rtc = std::make_unique<PCF8593>(0, 1);
+
+        cpu.setExternalArea(0, flash.get());
+        cpu.setExternalArea(1, extRAM.get()); //external ram
+        cpu.setExternalArea(3, lcd.get()); //lcd
+        cpu.setExternalArea(7, keyboard.get()); // keyboard
+
+        // serial ports
+        serialFlash = std::make_unique<SerialFlash>();
+        bootSerial = std::make_unique<BootSerial>(2);
+
+        cpu.setSerialDevice(1, serialFlash.get());
+        cpu.setSerialDevice(2, bootSerial.get());
+
+        // IO ports
+        classicPort1 = std::make_unique<Port1Classic>();
+        classicPort3 = std::make_unique<Port3Classic>(*serialFlash);
+        classicPortF = std::make_unique<PortFClassic>();
+
+        cpu.addIODevice(IOPort::_1, classicPort1.get());
+        cpu.addIODevice(IOPort::_3, classicPort3.get());
+        cpu.addIODevice(IOPort::F, rtc.get());
+        cpu.addIODevice(IOPort::F, classicPortF.get());
+
+        // load rom/flash dumps
+        // (These are from the "C4PC system pack")
+        if(!cpu.loadROM((dataPath + "emu_rom.bin").c_str()))
+        {
+            std::cerr << "Failed to load ROM!\n";
+            return 1;
+        }
+
+        // try to load updated file first, fallback to base flash
+        if(!serialFlash->loadFile((dataPath + "classic-flash-persist.bin").c_str()))
+            serialFlash->loadFile((dataPath + "emu_flash.bin").c_str());
+        flash->loadFile((dataPath + "emu_cyos.bin").c_str());
     }
 
     // change id for fun
@@ -490,8 +603,13 @@ int main(int argc, char *args[])
         SDL_RenderPresent(sdlRenderer);
     }
 
-    if(xtreme && persistExtRAM && !benchmarkMode)
-        extRAM->saveFile((deviceDataPath + "exram.bin").c_str());
+    if(persistExtRAM && !benchmarkMode)
+    {
+        if(xtreme)
+            extRAM->saveFile((deviceDataPath + "exram.bin").c_str());
+        else
+            serialFlash->saveFile((dataPath + "classic-flash-persist.bin").c_str());
+    }
 
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(sdlRenderer);
