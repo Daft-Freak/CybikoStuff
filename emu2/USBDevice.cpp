@@ -212,7 +212,7 @@ void USBDevice::write(uint32_t addr, uint8_t val)
             break;
 
         case USBReg::TXD0:
-            if(controlFIFO.getFilled() < 8)
+            if(!controlFIFO.full())
                 controlFIFO.push(val);
             break;
 

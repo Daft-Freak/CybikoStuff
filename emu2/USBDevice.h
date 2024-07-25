@@ -44,14 +44,14 @@ private:
         void reset()
         {
             readOff = writeOff = 0;
-            full = false;
+            fullFlag = false;
         }
 
         uint8_t pop()
         {
             auto ret = buf[readOff++];
             readOff %= size;
-            full = false;
+            fullFlag = false;
             return ret;
         }
 
@@ -61,12 +61,12 @@ private:
             writeOff %= size;
 
             if(readOff == writeOff)
-                full = true;
+                fullFlag = true;
         }
 
         int getFilled()
         {
-            if(full)
+            if(fullFlag)
                 return size;
 
             if(writeOff >= readOff)
@@ -77,13 +77,18 @@ private:
 
         bool empty() const
         {
-            return !full && readOff == writeOff;
+            return !fullFlag && readOff == writeOff;
+        }
+
+        bool full() const
+        {
+            return fullFlag;
         }
 
     private:
         uint8_t buf[size];
         int writeOff = 0, readOff = 0;
-        bool full = false;
+        bool fullFlag = false;
     };
 
 
