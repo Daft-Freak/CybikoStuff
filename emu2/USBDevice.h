@@ -117,6 +117,9 @@ private:
     // fifo
     FIFO<8> controlFIFO;
 
+    FIFO<64> txFifo[3]; // EP1/3/5
+    FIFO<64> rxFifo[3]; // EP2/4/6
+
     // enumeration state
     EnumerationState enumerationState;
     uint8_t deviceDesc[18];

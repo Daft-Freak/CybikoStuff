@@ -83,16 +83,6 @@ uint8_t USBDevice::read(uint32_t addr)
         case USBReg::NAKMSK:
             return nakMask;
 
-        case USBReg::RXD0:
-        {
-            uint8_t v = 0;
-            if(controlFIFO.getFilled())
-                v = controlFIFO.pop();
-
-            return v;
-        }
-
-        // test hax
         case USBReg::TXS0:
         {
             // ack?
@@ -111,7 +101,64 @@ uint8_t USBDevice::read(uint32_t addr)
                 return RXS0_SETUP | 8;
             else
                 return controlFIFO.getFilled();
-        //
+    
+        case USBReg::RXD0:
+        {
+            uint8_t v = 0;
+            if(!controlFIFO.empty())
+                v = controlFIFO.pop();
+
+            return v;
+        }
+
+        case USBReg::TXS1:
+        case USBReg::TXS2:
+        case USBReg::TXS3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::TXS1)) / 8;
+
+            int level = 64 - txFifo[index].getFilled();
+            if(level > 31)
+                level = 31;
+
+            int evMask = 1 << (index + 1);
+            bool done = (txEvent & evMask);
+            txEvent &= ~evMask;
+            updateInterrupt();
+
+            return (done ? TXSx_DONE | TXSx_ACK_STAT : 0) | level;
+        }
+
+        case USBReg::RXS1:
+        case USBReg::RXS2:
+        case USBReg::RXS3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::RXS1)) / 8;
+
+            int level = rxFifo[index].getFilled();
+            if(level > 15)
+                level = 15;
+
+            int evMask = 1 << (index + 1);
+            rxEvent &= ~evMask;
+            updateInterrupt();
+
+            if(rxFifo[index].getFilled() == 8) // FIXME: this will need more work
+                return RXSx_SETUP | level;
+            else
+                return level;
+        }
+
+        case USBReg::RXD1:
+        case USBReg::RXD2:
+        case USBReg::RXD3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::RXD1)) / 8;
+            uint8_t v = 0;
+            if(!rxFifo[index].empty())
+                v = rxFifo[index].pop();
+            return v;
+        }
     }
 
     std::cout << "USB r " << std::hex << static_cast<int>(regAddr) << "(" << getRegName(regAddr) << ")" << std::dec << std::endl;
@@ -156,6 +203,11 @@ void USBDevice::write(uint32_t addr, uint8_t val)
 
         case USBReg::NAKMSK:
             nakMask = val;
+            break;
+
+        case USBReg::TXD0:
+            if(!controlFIFO.full())
+                controlFIFO.push(val);
             break;
 
         case USBReg::TXC0:
@@ -211,10 +263,6 @@ void USBDevice::write(uint32_t addr, uint8_t val)
             }
             break;
 
-        case USBReg::TXD0:
-            if(!controlFIFO.full())
-                controlFIFO.push(val);
-            break;
 
         case USBReg::RXC0:
             rxEnable[0] = (val & RXC0_EN) != 0;
@@ -225,12 +273,57 @@ void USBDevice::write(uint32_t addr, uint8_t val)
             if(val & RXC0_IGN_OUT)
                 std::cout << "USB RXC0 IGN_OUT\n";
             if(val & RXC0_IGN_SETUP)
-                std::cout << "USB RXC0 IGN_OUT\n";
+                std::cout << "USB RXC0 IGN_SETUP\n";
 
             if(rxEnable[0])
                 updateEnumeration();
 
             break;
+
+        case USBReg::TXD1:
+        case USBReg::TXD2:
+        case USBReg::TXD3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::TXD1)) / 8;
+            if(!txFifo[index].full())
+                txFifo[index].push(val);
+            break;
+        }
+
+        case USBReg::TXC1:
+        case USBReg::TXC2:
+        case USBReg::TXC3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::TXC1)) / 8 + 1;
+            rxEnable[index] = (val & TXCx_EN) != 0;
+
+            if(val & TXCx_FLUSH)
+                txFifo[index - 1].reset();
+
+            // TODO: other bits?
+
+            if(rxEnable[index])
+                printf("USB TX%i\n", index);
+            break;
+        }
+
+        case USBReg::RXC1:
+        case USBReg::RXC2:
+        case USBReg::RXC3:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::RXC1)) / 8 + 1;
+            rxEnable[index] = (val & RXCx_EN) != 0;
+
+            if(val & RXCx_FLUSH)
+                rxFifo[index - 1].reset();
+
+            // TODO: other bits?
+
+            if(rxEnable[index])
+                printf("USB RX%i\n", index);
+            break;
+        }
+
         default:
             std::cout << "USB w " << std::hex << static_cast<int>(regAddr) << "(" << getRegName(regAddr) << ") = " << static_cast<int>(val) << std::dec << std::endl;
     }
