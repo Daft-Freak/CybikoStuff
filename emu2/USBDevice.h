@@ -113,6 +113,8 @@ private:
 
     uint8_t endpointControl[7];
 
+    uint8_t endpointSetupRecv = 0;
+
     // enables
     bool txEnable[4], rxEnable[4];
 

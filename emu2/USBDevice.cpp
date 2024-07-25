@@ -93,14 +93,16 @@ uint8_t USBDevice::read(uint32_t addr)
         }
 
         case USBReg::RXS0:
+        {
             // reading status clears RXEV
             rxEvent &= ~RXEV_FIFO0;
             updateInterrupt();
 
-            if(controlFIFO.getFilled() == 8)
-                return RXS0_SETUP | 8;
-            else
-                return controlFIFO.getFilled();
+            bool setup = endpointSetupRecv & (1 << 0);
+            endpointSetupRecv &= ~(1 << 0);
+
+            return (setup ? RXS0_SETUP : 0) | controlFIFO.getFilled();
+        }
     
         case USBReg::RXD0:
         {
@@ -139,14 +141,15 @@ uint8_t USBDevice::read(uint32_t addr)
             if(level > 15)
                 level = 15;
 
+            // clear event
             int evMask = 1 << (index + 1);
             rxEvent &= ~evMask;
             updateInterrupt();
 
-            if(rxFifo[index].getFilled() == 8) // FIXME: this will need more work
-                return RXSx_SETUP | level;
-            else
-                return level;
+            bool setup = endpointSetupRecv & (1 << (index + 1));
+            endpointSetupRecv &= ~(1 <<  (index + 1));
+
+            return (setup ? RXSx_SETUP : 0) | level;
         }
 
         case USBReg::RXD1:
@@ -394,6 +397,7 @@ bool USBDevice::usbipGetDescriptor(usbip_client *client, uint32_t seqnum, uint8_
         usbipInDataOffset[0] = 0;
 
         rxEvent |= RXEV_FIFO0;
+        endpointSetupRecv |= 1 << 0;
         updateInterrupt();
 
         return true;
@@ -449,6 +453,7 @@ bool USBDevice::usbipControlRequest(usbip_client *client, uint32_t seqnum, uint8
         usbipOutSeqnum[0] = seqnum;
 
     rxEvent |= RXEV_FIFO0;
+    endpointSetupRecv |= 1 << 0;
     updateInterrupt();
 
     return true;
@@ -503,6 +508,7 @@ void USBDevice::updateEnumeration()
         controlFIFO.push(length >> 8);
 
         rxEvent |= RXEV_FIFO0;
+        endpointSetupRecv |= 1 << 0;
         updateInterrupt();
     };
 
