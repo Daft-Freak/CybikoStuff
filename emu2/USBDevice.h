@@ -111,6 +111,8 @@ private:
     // event status
     uint8_t altEvent = 0, txEvent = 0, rxEvent = 0, nakEvent = 0;
 
+    uint8_t endpointControl[7];
+
     // enables
     bool txEnable[4], rxEnable[4];
 

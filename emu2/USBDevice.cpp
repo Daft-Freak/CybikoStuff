@@ -205,6 +205,10 @@ void USBDevice::write(uint32_t addr, uint8_t val)
             nakMask = val;
             break;
 
+        case USBReg::EPC0:
+            endpointControl[0] = val;
+            break;
+
         case USBReg::TXD0:
             if(!controlFIFO.full())
                 controlFIFO.push(val);
@@ -279,6 +283,18 @@ void USBDevice::write(uint32_t addr, uint8_t val)
                 updateEnumeration();
 
             break;
+
+        case USBReg::EPC1:
+        case USBReg::EPC2:
+        case USBReg::EPC3:
+        case USBReg::EPC4:
+        case USBReg::EPC5:
+        case USBReg::EPC6:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::EPC1)) / 4 + 1;
+            endpointControl[index] = val;
+            break;
+        }
 
         case USBReg::TXD1:
         case USBReg::TXD2:
