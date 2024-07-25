@@ -1,6 +1,8 @@
 #ifndef USBDEVICE_H
 #define USBDEVICE_H
 
+#include "usbip.h"
+
 #include "H8CPU.h"
 
 
@@ -13,6 +15,14 @@ public:
     void write(uint32_t addr, uint8_t val) override;
 
     void startEnumeration();
+
+    void usbipUpdate();
+
+    bool usbipGetDescriptor(struct usbip_client *client, uint32_t seqnum, uint8_t descType, uint8_t descIndex, uint16_t setupIndex, uint16_t setupLength);
+    bool usbipControlRequest(struct usbip_client *client, uint32_t seqnum, uint8_t requestType, uint8_t request, uint16_t value, uint16_t index, uint16_t length, const uint8_t *outData);
+    bool usbipIn(struct usbip_client *client, uint32_t seqnum, int ep, uint32_t length);
+    bool usbipOut(struct usbip_client *client, uint32_t seqnum, int ep, uint32_t length, const uint8_t *data);
+    bool usbipUnlink(struct usbip_client *client, uint32_t seqnum);
 
 private:
     enum class EnumerationState
@@ -108,6 +118,23 @@ private:
     int deviceDescOffset;
     uint8_t *configDesc = nullptr;
     int configDescLen, configDescOffset;
+
+    // usbip
+    usbip_server *usbipServer = nullptr;
+    usbip_device usbipDev;
+
+    usbip_client *usbipLastClient;
+
+    uint32_t usbipInSeqnum[16];
+    uint32_t usbipOutSeqnum[16];
+
+    uint8_t *usbipInData[16];
+    uint32_t usbipInDataLen[16];
+    uint32_t usbipInDataOffset[16];
+
+    uint8_t *usbipOutData[16];
+    uint32_t usbipOutDataLen[16];
+    uint32_t usbipOutDataOffset[16];
 };
 
 #endif

@@ -1,10 +1,41 @@
 // split out 20 dec 2019
 // probably written in jan
 
+#include <cstring>
 #include <iostream>
 
 #include "USBDevice.h"
 #include "USBRegisters.h"
+
+static bool usbipGetDescriptor(struct usbip_client *client, uint32_t seqnum, uint8_t descType, uint8_t descIndex, uint16_t setupIndex, uint16_t setupLength, void *userData)
+{
+    auto usb = reinterpret_cast<USBDevice *>(userData);
+    return usb->usbipGetDescriptor(client, seqnum, descType, descIndex, setupIndex, setupLength);
+}
+
+static bool usbipControlRequest(struct usbip_client *client, uint32_t seqnum, uint8_t requestType, uint8_t request, uint16_t value, uint16_t index, uint16_t length, const uint8_t *outData, void *userData)
+{
+    auto usb = reinterpret_cast<USBDevice *>(userData);
+    return usb->usbipControlRequest(client, seqnum, requestType, request, value, index, length, outData);
+}
+
+static bool usbipIn(struct usbip_client *client, uint32_t seqnum, int ep, uint32_t length, void *userData)
+{
+    auto usb = reinterpret_cast<USBDevice *>(userData);
+    return usb->usbipIn(client, seqnum, ep, length);
+}
+
+static bool usbipOut(struct usbip_client *client, uint32_t seqnum, int ep, uint32_t length, const uint8_t *data, void *userData)
+{
+    auto usb = reinterpret_cast<USBDevice *>(userData);
+    return usb->usbipOut(client, seqnum, ep, length, data);
+}
+
+static bool usbipUnlink(struct usbip_client *client, uint32_t seqnum, void *userData)
+{
+    auto usb = reinterpret_cast<USBDevice *>(userData);
+    return usb->usbipUnlink(client, seqnum);
+}
 
 USBDevice::USBDevice(H8CPU &cpu) : cpu(cpu)
 {
@@ -143,9 +174,34 @@ void USBDevice::write(uint32_t addr, uint8_t val)
                 {
                     nakEvent |= NAKEV_OUT0;
                     updateInterrupt();
+
+                    if(usbipServer && usbipInSeqnum[0])
+                    {
+                        // should be end of data if we have any
+                        if(usbipInDataOffset[0] || !usbipInDataLen[0])
+                            usbip_client_reply(usbipLastClient, usbipInSeqnum[0], usbipInData[0], usbipInDataLen[0]);
+                        else
+                        {
+                            printf("usbip stall in %i\n", usbipInSeqnum[0]);
+                            usbip_client_stall(usbipLastClient, usbipInSeqnum[0]);
+                        }
+                        usbipInSeqnum[0] = 0;
+                    }
                 }
-                else
+                else if(enumerationState != EnumerationState::Done)
                     updateEnumeration();
+                else if(usbipServer && usbipInSeqnum[0])
+                {
+                    // thanks to our tiny FIFO, we need to buffer here
+                    while(!controlFIFO.empty())
+                        usbipInData[0][usbipInDataOffset[0]++] = controlFIFO.pop();
+
+                    if(usbipInDataOffset[0] == usbipInDataLen[0])
+                    {
+                        usbip_client_reply(usbipLastClient, usbipInSeqnum[0], usbipInData[0], usbipInDataLen[0]);
+                        usbipInSeqnum[0] = 0;
+                    }
+                }
 
                 if(controlFIFO.empty())
                 {
@@ -190,6 +246,139 @@ void USBDevice::startEnumeration()
     updateEnumeration();
 }
 
+void USBDevice::usbipUpdate()
+{
+    if(!usbipServer)
+        return;
+
+    timeval timeout;
+
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    usbip_server_update(usbipServer, &timeout);
+}
+
+bool USBDevice::usbipGetDescriptor(usbip_client *client, uint32_t seqnum, uint8_t descType, uint8_t descIndex, uint16_t setupIndex, uint16_t setupLength)
+{
+    if(rxEnable[0] && controlFIFO.empty())
+    {
+        if(usbipInData[0])
+            delete[] usbipInData[0];
+
+        // re-assemble setup packet
+        controlFIFO.push(0x80);
+        controlFIFO.push(0x6);
+        controlFIFO.push(descIndex);
+        controlFIFO.push(descType);
+        controlFIFO.push(setupIndex);
+        controlFIFO.push(setupIndex >> 8);
+        controlFIFO.push(setupLength);
+        controlFIFO.push(setupLength >> 8);
+
+        usbipLastClient = client;
+        usbipInSeqnum[0] = seqnum;
+
+        usbipInData[0] = new uint8_t[setupLength];
+
+        usbipInDataLen[0] = setupLength;
+        usbipInDataOffset[0] = 0;
+
+        rxEvent |= RXEV_FIFO0;
+        updateInterrupt();
+
+        return true;
+    }
+    return false;
+}
+
+bool USBDevice::usbipControlRequest(usbip_client *client, uint32_t seqnum, uint8_t requestType, uint8_t request, uint16_t value, uint16_t index, uint16_t length, const uint8_t *outData)
+{
+    if(outData) // copy out data
+    {
+        if(usbipOutData[0])
+            delete[] usbipOutData[0];
+
+        usbipOutData[0] = new uint8_t[length];
+        usbipOutDataLen[0] = length;
+        usbipOutDataOffset[0] = 0;
+        memcpy(usbipOutData[0], outData, length);
+    }
+
+    bool in = (requestType & 0x80) || !length; // 0-length always in?
+
+    if(!rxEnable[0] && !controlFIFO.empty())
+        return false;
+
+    // re-assemble setup packet
+    controlFIFO.push(requestType);
+    controlFIFO.push(request);
+    controlFIFO.push(value);
+    controlFIFO.push(value >> 8);
+    controlFIFO.push(index);
+    controlFIFO.push(index >> 8);
+    controlFIFO.push(length);
+    controlFIFO.push(length >> 8);
+
+    usbipLastClient = client;
+
+    if(in)
+    {
+        if(length)
+        {
+            if(usbipInData[0])
+                delete[] usbipInData[0];
+
+            usbipInData[0] = new uint8_t[length];
+        }
+
+        usbipInDataLen[0] = length;
+        usbipInDataOffset[0] = 0;
+        usbipInSeqnum[0] = seqnum;
+    }
+    else
+        usbipOutSeqnum[0] = seqnum;
+
+    rxEvent |= RXEV_FIFO0;
+    updateInterrupt();
+
+    return true;
+}
+
+bool USBDevice::usbipIn(usbip_client *client, uint32_t seqnum, int ep, uint32_t length)
+{
+    printf("usbip in %i %i %i\n", seqnum, ep, length);
+    return false;
+}
+
+bool USBDevice::usbipOut(usbip_client *client, uint32_t seqnum, int ep, uint32_t length, const uint8_t *data)
+{
+    printf("usbip out %i %i %i\n", seqnum, ep, length);
+    return false;
+}
+
+bool USBDevice::usbipUnlink(usbip_client *client, uint32_t seqnum)
+{
+    for(auto &n : usbipInSeqnum)
+    {
+        if(n == seqnum)
+        {
+            n = 0;
+            return true;
+        }
+    }
+
+    for(auto &n : usbipOutSeqnum)
+    {
+        if(n == seqnum)
+        {
+            n = 0;
+            return true;
+        }
+    }
+
+    return true; // should be more strict here, but we're losing seqnums sometimes
+}
 
 void USBDevice::updateEnumeration()
 {
@@ -411,7 +600,20 @@ void USBDevice::updateEnumeration()
                     }
                 }
 
-                // usbip...
+                // switch over to usbip now that we have the descriptors
+                usbip_remove_device(&usbipDev);
+
+                usbipDev.device_descriptor = deviceDesc;
+                usbipDev.config_descriptor = configDesc;
+                usbipDev.speed = usbip_speed_full;
+                usbipDev.user_data = this;
+                usbipDev.get_descriptor = ::usbipGetDescriptor;
+                usbipDev.control_request = ::usbipControlRequest;
+                usbipDev.in = ::usbipIn;
+                usbipDev.out = ::usbipOut;
+                usbipDev.unlink = ::usbipUnlink;
+
+                usbip_add_device(&usbipDev);
             
                 enumerationState = EnumerationState::Done;
             }
@@ -454,6 +656,38 @@ void USBDevice::reset()
 
     if(enumEnabled)
         startEnumeration();
+
+    // setup USBIP if enumeration enabled
+    if(enumEnabled)
+    {
+        if(usbipServer)
+        {
+            usbip_destroy_server(usbipServer);
+            usbipServer = nullptr;
+        }
+
+        if(usbip_create_server(&usbipServer, "::1", 0) != usbip_success)
+            std::cerr << "USBIP server create failed!\n";
+    
+        for(auto &num : usbipInSeqnum)
+            num = 0;
+        for(auto &num : usbipOutSeqnum)
+            num = 0;
+
+        for(auto &buf : usbipInData)
+            buf = nullptr;
+        for(auto &len : usbipInDataLen)
+            len = 0;
+        for(auto &off : usbipInDataOffset)
+            off = 0;
+
+        for(auto &buf : usbipOutData)
+            buf = nullptr;
+        for(auto &len : usbipOutDataLen)
+            len = 0;
+        for(auto &off : usbipOutDataOffset)
+            off = 0;
+    }
 }
 
 uint8_t USBDevice::getMAEV() const
