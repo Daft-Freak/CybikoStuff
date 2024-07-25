@@ -4034,6 +4034,17 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
 
         case 0xF2E: // IER
             irqEnable = val;
+
+            // flag newly unmasked IRQs
+            if(irqEnable & irqStatus)
+            {
+                auto servicable = irqEnable & irqStatus;
+                for(int i = 0; i < 8; i++)
+                {
+                    if(servicable & (1 << i))
+                        interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::IRQ0) + i));
+                }
+            }
             break;
         case 0xF2F: // ISR
             irqStatus &= val; // not possible to set bits
