@@ -216,4 +216,54 @@ enum RXC0Bits
     RXC0_FLUSH     = 1 << 3,
     // bits 4-7 reserved
 };
+
+// non-0 endpoints
+enum EPCxBits
+{
+    // bits 0-3 are the address
+    EPCx_EN    = 1 << 4,
+    EPCx_ISO   = 1 << 5,
+    // bit 6 reserved
+    EPCx_STALL = 1 << 7
+};
+
+enum TXSxBits
+{
+    // bits 0-4 are the count (clamped to 31)
+    TXSx_DONE     = 1 << 5,
+    TXSx_ACK_STAT = 1 << 6,
+    TXSx_TX_URUN  = 1 << 7,
+};
+
+enum TXCxBits
+{
+    TXCx_EN     = 1 << 0,
+    TXCx_LAST   = 1 << 1,
+    TXCx_TOGGLE = 1 << 2,
+    TXCx_FLUSH  = 1 << 3,
+    TXCx_RFF    = 1 << 4,
+    TXCx_TWFL   = 3 << 5,
+    TXCx_ISOMSK = 1 << 7,
+};
+
+enum RXSxBits
+{
+    // bits 0-3 are the count (clamped to 15)
+    RXSx_LAST   = 1 << 4,
+    RXSx_TOGGLE = 1 << 5,
+    RXSx_SETUP  = 1 << 6,
+    RXSx_RX_ERR = 1 << 7,
+};
+
+enum RXCxBits
+{
+    RXCx_EN        = 1 << 0,
+    // bit 1 reserved
+    RXCx_IGN_SETUP = 1 << 2,
+    RXCx_FLUSH     = 1 << 3,
+    // bit 4 reserved
+    RXCx_TWFL      = 3 << 5,
+    // bit 7 reserved
+};
+
 #endif
