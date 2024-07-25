@@ -99,7 +99,7 @@ uint8_t USBDevice::read(uint32_t addr)
             bool done = (txEvent & TXEV_FIFO0);
             txEvent &= ~TXEV_FIFO0;
             updateInterrupt();
-            return (done ? TXS0_DONE | TXS0_ACK_STAT : 0) | controlFIFO.getFilled();
+            return (done ? TXS0_DONE | TXS0_ACK_STAT : 0) | (8 - controlFIFO.getFilled());
         }
 
         case USBReg::RXS0:
