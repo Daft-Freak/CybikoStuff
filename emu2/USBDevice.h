@@ -72,7 +72,7 @@ private:
     uint8_t mainMask = 0, altMask = 0, txMask = 0, rxMask = 0, nakMask = 0;
 
     // event status
-    uint8_t txEvent = 0, rxEvent = 0, nakEvent = 0;
+    uint8_t altEvent = 0, txEvent = 0, rxEvent = 0, nakEvent = 0;
 
     // enables
     bool txEnable[4], rxEnable[4];

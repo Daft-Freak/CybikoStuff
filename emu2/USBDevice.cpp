@@ -25,6 +25,12 @@ uint8_t USBDevice::read(uint32_t addr)
             return getMAEV();
         case USBReg::MAMSK:
             return mainMask;
+        case USBReg::ALTEV:
+        {
+            auto tmp = altEvent;
+            altEvent &= ~(ALTEV_EOP | ALTEV_SD3 | ALTEV_SD5 | ALTEV_RESET | ALTEV_RESUME);
+            return tmp;
+        }
         case USBReg::ALTMSK:
             return altMask;
         case USBReg::TXEV:
@@ -163,6 +169,7 @@ void USBDevice::reset()
     rxMask = 0;
     nakMask = 0;
 
+    altEvent = 0;
     txEvent = 0;
     rxEvent = 0;
     nakEvent = 0;
@@ -177,6 +184,9 @@ uint8_t USBDevice::getMAEV() const
 {
     uint8_t v = 0;
 
+    if(altEvent & altMask)
+        v |= MAEV_ALT;
+    
     if(txEvent & txMask)
         v |= MAEV_TX;
 
@@ -264,4 +274,3 @@ const char *USBDevice::getRegName(int reg)
 
     return regNames[reg];
 }
-
