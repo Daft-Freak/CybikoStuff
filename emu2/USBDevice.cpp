@@ -29,6 +29,7 @@ uint8_t USBDevice::read(uint32_t addr)
         {
             auto tmp = altEvent;
             altEvent &= ~(ALTEV_EOP | ALTEV_SD3 | ALTEV_SD5 | ALTEV_RESET | ALTEV_RESUME);
+            updateInterrupt();
             return tmp;
         }
         case USBReg::ALTMSK:
@@ -45,6 +46,7 @@ uint8_t USBDevice::read(uint32_t addr)
         {
             auto tmp = nakEvent;
             nakEvent = 0; // cleared on read
+            updateInterrupt();
             return tmp;
         }
         case USBReg::NAKMSK:
@@ -65,12 +67,14 @@ uint8_t USBDevice::read(uint32_t addr)
             // ack?
             bool done = (txEvent & TXEV_FIFO0);
             txEvent &= ~TXEV_FIFO0;
+            updateInterrupt();
             return (done ? TXS0_DONE | TXS0_ACK_STAT : 0) | controlFIFO.getFilled();
         }
 
         case USBReg::RXS0:
             // reading status clears RXEV
             rxEvent &= ~RXEV_FIFO0;
+            updateInterrupt();
 
             if(controlFIFO.getFilled() == 8)
                 return RXS0_SETUP | 8;
@@ -132,6 +136,23 @@ void USBDevice::write(uint32_t addr, uint8_t val)
 
             if(val & TXC0_IGN_IN)
                 std::cout << "USB TXC0 IGN_IN\n";
+
+            if(txEnable[0])
+            {
+                if(controlFIFO.empty())
+                {
+                    nakEvent |= NAKEV_OUT0;
+                    updateInterrupt();
+                }
+                else
+                    updateEnumeration();
+
+                if(controlFIFO.empty())
+                {
+                    txEvent |= TXEV_FIFO0;
+                    updateInterrupt();
+                }
+            }
             break;
 
         case USBReg::TXD0:
@@ -150,10 +171,260 @@ void USBDevice::write(uint32_t addr, uint8_t val)
             if(val & RXC0_IGN_SETUP)
                 std::cout << "USB RXC0 IGN_OUT\n";
 
+            if(rxEnable[0])
+                updateEnumeration();
+
             break;
         default:
             std::cout << "USB w " << std::hex << static_cast<int>(regAddr) << "(" << getRegName(regAddr) << ") = " << static_cast<int>(val) << std::dec << std::endl;
     }
+}
+
+void USBDevice::startEnumeration()
+{
+    if(enumerationState != EnumerationState::NotStarted)
+        return;
+
+    enumerationState = EnumerationState::RequestDeviceDesc;
+
+    updateEnumeration();
+}
+
+
+void USBDevice::updateEnumeration()
+{
+    auto setupPacket = [this](uint8_t requestType, uint8_t request, uint16_t value, uint16_t index, uint16_t length)
+    {
+        controlFIFO.push(requestType);
+        controlFIFO.push(request);
+        controlFIFO.push(value);
+        controlFIFO.push(value >> 8);
+        controlFIFO.push(index);
+        controlFIFO.push(index >> 8);
+        controlFIFO.push(length);
+        controlFIFO.push(length >> 8);
+
+        rxEvent |= RXEV_FIFO0;
+        updateInterrupt();
+    };
+
+    auto canSendPacket = [this]
+    {
+        // there's only one fifo, so having tx and rx events set is going to confuse things
+        return rxEnable[0] && controlFIFO.empty() && !(txEvent & TXEV_FIFO0);
+    };
+
+    switch(enumerationState)
+    {
+        case EnumerationState::NotStarted:
+        case EnumerationState::Done:
+            break;
+
+        case EnumerationState::RequestDeviceDesc:
+        {
+            if(!canSendPacket())
+                return;
+
+            setupPacket(0x80, 6 /*GET_DESCRIPTOR*/, 1 << 8 /*device*/, 0, 18);
+
+            enumerationState = EnumerationState::ReadDeviceDesc;
+            deviceDescOffset = 0;
+            break;
+        }
+        
+        case EnumerationState::ReadDeviceDesc:
+        {
+            if(!txEnable[0])
+                return;
+
+            while(!controlFIFO.empty() && deviceDescOffset < 18)
+                deviceDesc[deviceDescOffset++] = controlFIFO.pop();
+
+            if(deviceDescOffset == 18)
+            {
+                printf("USB device descriptor:\n");
+
+                printf("\tbLength            %i\n", deviceDesc[0]);
+                printf("\tbDescriptorType    %i\n", deviceDesc[1]);
+                printf("\tbcdUSB             %i.%02i\n", deviceDesc[3], deviceDesc[2]);
+                printf("\tbDeviceClass       %i\n", deviceDesc[4]);
+                printf("\tbDeviceSubClass    %i\n", deviceDesc[5]);
+                printf("\tbDeviceProtocol    %i\n", deviceDesc[6]);
+                printf("\tbMaxPacketSize     %i\n", deviceDesc[7]);
+                printf("\tidVendor           %04X\n", deviceDesc[8] | (deviceDesc[9] << 8));
+                printf("\tidProduct          %04X\n", deviceDesc[10] | (deviceDesc[11] << 8));
+                printf("\tbcdDevice          %i.%02i\n", deviceDesc[13], deviceDesc[12]);
+                printf("\tiManufacturer      %i\n", deviceDesc[14]);
+                printf("\tiProduct           %i\n", deviceDesc[15]);
+                printf("\tiSerialNumber      %i\n", deviceDesc[16]);
+                printf("\tbNumConfigurations %i\n", deviceDesc[17]);
+
+                //altEvent |= ALTEV_RESET; // reset?
+
+                enumerationState = EnumerationState::SetAddress;
+            }
+            break;
+        }
+        
+        case EnumerationState::SetAddress: // reset done
+        {
+            if(!canSendPacket())
+                return;
+
+            setupPacket(0, 5 /*SET_ADDRESS*/, 1 /*addr*/, 0, 0);
+
+            enumerationState = EnumerationState::RequestConfigDesc;
+            break;
+        }
+
+        case EnumerationState::RequestConfigDesc: // set addr done
+        {
+            if(!canSendPacket())
+                return;
+
+            // get config descriptor
+            setupPacket(0x80, 6 /*GET_DESCRIPTOR*/, 2 << 8 /*configuration*/, 0, 9);
+
+            configDescOffset = 0;
+            enumerationState = EnumerationState::RequestFullConfigDesc;
+            break;
+        }
+
+        case EnumerationState::RequestFullConfigDesc:
+        {
+            if(!txEnable[0] && configDescOffset < 9)
+                return;
+
+            uint8_t buf[8];
+
+            if(configDescOffset < 8)
+            {
+                // we just want the len, which should be at the start
+                while(!controlFIFO.empty())
+                    buf[configDescOffset++] = controlFIFO.pop();
+
+                configDescLen = buf[2] | buf[3] << 8;
+                printf("USB config desc len %i\n", configDescLen);
+            }
+            else if(configDescOffset < 9)
+            {
+                // discard the rest (which is one byte...)
+                while(!controlFIFO.empty())
+                {
+                    controlFIFO.pop();
+                    configDescOffset++;
+                }
+            }
+            else
+            {
+                if(!canSendPacket())
+                    return;
+
+                // now get the whole thing
+                setupPacket(0x80, 6 /*GET_DESCRIPTOR*/, 2 << 8 /*configuration*/, 0, configDescLen);
+
+                enumerationState = EnumerationState::ReadConfigDesc;
+
+                if(configDesc)
+                    delete[] configDesc;
+
+                configDesc = new uint8_t[configDescLen];
+                configDescOffset = 0;
+            }
+            break;
+        }
+
+        case EnumerationState::ReadConfigDesc:
+        {
+            if(!txEnable[0])
+                return;
+
+            while(!controlFIFO.empty())
+                configDesc[configDescOffset++] = controlFIFO.pop();
+
+            if(configDescOffset == configDescLen)
+            {
+                printf("USB configuration descriptor:\n");
+
+                printf("\tbLength             %i\n", configDesc[0]);
+                printf("\tbDescriptorType     %i\n", configDesc[1]);
+                printf("\twTotalLength        %04X\n", configDesc[2] | configDesc[3] << 8);
+                printf("\tbNumInterfaces      %i\n", configDesc[4]);
+                printf("\tbConfigurationValue %i\n", configDesc[5]);
+                printf("\tiConfiguration      %i\n", configDesc[6]);
+                printf("\tbmAttributes        %02X\n", configDesc[7]);
+                printf("\tbMaxPower           %i\n", configDesc[8]);
+
+                // interfaces
+                auto desc = configDesc + 9;
+                auto end = desc + configDescOffset;
+                for(int i = 0; i < configDesc[4] && desc < end;)
+                {
+                    if(!desc[0])
+                        break;
+
+                    if(desc[1] == 4)
+                    {
+                        printf("\tinterface descriptor:\n");
+                        printf("\t\tbLength            %i\n", desc[0]);
+                        printf("\t\tbDescriptorType    %i\n", desc[1]);
+                        printf("\t\tbInterfaceNumber   %i\n", desc[2]);
+                        printf("\t\tbAlternateSetting  %i\n", desc[3]);
+                        printf("\t\tbNumEndpoints      %i\n", desc[4]);
+                        printf("\t\tbInterfaceClass    %i\n", desc[5]);
+                        printf("\t\tbInterfaceSubClass %i\n", desc[6]);
+                        printf("\t\tbInterfaceProtocol %i\n", desc[7]);
+                        printf("\t\tiInterface         %i\n", desc[8]);
+
+                        int numEP = desc[4];
+
+                        i++;
+                        desc += desc[0];
+                        
+                        // endpoints
+                        for(int ep = 0; ep < numEP && desc < end;)
+                        {
+                            if(!desc[0])
+                                break;
+
+                            if(desc[1] == 5)
+                            {
+                                printf("\t\tendpoint descriptor:\n");
+                                printf("\t\t\tbLength          %i\n", desc[0]);
+                                printf("\t\t\tbDescriptorType  %i\n", desc[1]);
+                                printf("\t\t\tbEndpointAddress %02X\n", desc[2]);
+                                printf("\t\t\tbmAttributes     %i\n", desc[3]);
+                                printf("\t\t\twMaxPacketSize   %04X\n", desc[4] | desc[5] << 8);
+                                printf("\t\t\tbInterval        %i\n", desc[6]);
+                                ep++;
+                            }
+                            else
+                                printf("\t\tdesc %i len %i\n", desc[1], desc[0]);
+
+                            desc += desc[0];
+                        }
+                    }
+                    else
+                    {
+                        printf("\tdesc %i len %i\n", desc[1], desc[0]);
+                        desc += desc[0];
+                    }
+                }
+
+                // usbip...
+            
+                enumerationState = EnumerationState::Done;
+            }
+
+            break;
+        }
+    }
+}
+
+void USBDevice::updateInterrupt()
+{
+    if(getMAEV() & mainMask)
+        cpu.externalInterrupt(1);
 }
 
 void USBDevice::reset()
@@ -173,6 +444,16 @@ void USBDevice::reset()
         txEnable[i] = rxEnable[i] = false;
 
     controlFIFO.reset();
+
+    // enumeration
+    bool enumEnabled = enumerationState != EnumerationState::NotStarted;
+    enumerationState = EnumerationState::NotStarted;
+    configDesc = nullptr;
+    configDescLen = 0;
+    configDescOffset = 0;
+
+    if(enumEnabled)
+        startEnumeration();
 }
 
 uint8_t USBDevice::getMAEV() const

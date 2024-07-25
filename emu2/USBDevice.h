@@ -12,7 +12,21 @@ public:
     uint8_t read(uint32_t addr) override;
     void write(uint32_t addr, uint8_t val) override;
 
+    void startEnumeration();
+
 private:
+    enum class EnumerationState
+    {
+        NotStarted = 0,
+        RequestDeviceDesc,
+        ReadDeviceDesc, // and reset
+        SetAddress,
+        RequestConfigDesc,
+        RequestFullConfigDesc,
+        ReadConfigDesc, // and init usbip
+        Done
+    };
+
     template<int size>
     class FIFO
     {
@@ -51,6 +65,11 @@ private:
                 return (writeOff + size) - readOff;
         }
 
+        bool empty() const
+        {
+            return !full && readOff == writeOff;
+        }
+
     private:
         uint8_t buf[size];
         int writeOff = 0, readOff = 0;
@@ -59,6 +78,9 @@ private:
 
 
     void reset();
+
+    void updateEnumeration();
+    void updateInterrupt();
 
     uint8_t getMAEV() const;
 
@@ -79,6 +101,13 @@ private:
 
     // fifo
     FIFO<8> controlFIFO;
+
+    // enumeration state
+    EnumerationState enumerationState;
+    uint8_t deviceDesc[18];
+    int deviceDescOffset;
+    uint8_t *configDesc = nullptr;
+    int configDescLen, configDescOffset;
 };
 
 #endif
