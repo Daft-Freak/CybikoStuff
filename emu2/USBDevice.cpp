@@ -6,7 +6,7 @@
 #include "USBDevice.h"
 #include "USBRegisters.h"
 
-USBDevice::USBDevice()
+USBDevice::USBDevice(H8CPU &cpu) : cpu(cpu)
 {
     reset();
 }
@@ -154,11 +154,6 @@ void USBDevice::write(uint32_t addr, uint8_t val)
         default:
             std::cout << "USB w " << std::hex << static_cast<int>(regAddr) << "(" << getRegName(regAddr) << ") = " << static_cast<int>(val) << std::dec << std::endl;
     }
-
-}
-
-void USBDevice::update(H8CPU &cpu)
-{
 }
 
 void USBDevice::reset()

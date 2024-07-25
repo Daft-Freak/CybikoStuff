@@ -408,7 +408,7 @@ int main(int argc, char *args[])
     std::unique_ptr<SerialDevice> bootSerial;
     
     // xtreme
-    auto usb = std::make_unique<USBDevice>();
+    auto usb = std::make_unique<USBDevice>(cpu);
     std::unique_ptr<DS2401> serialNo;
     std::unique_ptr<IODevice> miscPortA;
 
@@ -592,8 +592,6 @@ int main(int argc, char *args[])
                     running = false;
             }
         }
-
-        usb->update(cpu);
 
         //update screen
         // TODO: sync

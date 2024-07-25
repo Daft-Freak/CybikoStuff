@@ -7,12 +7,10 @@
 class USBDevice final : public ExternalAddressDevice
 {
 public:
-    USBDevice();
+    USBDevice(H8CPU &cpu);
 
     uint8_t read(uint32_t addr) override;
     void write(uint32_t addr, uint8_t val) override;
-
-    void update(H8CPU &cpu);
 
 private:
     template<int size>
@@ -65,6 +63,8 @@ private:
     uint8_t getMAEV() const;
 
     const char *getRegName(int reg);
+
+    H8CPU &cpu;
 
     uint8_t regAddr;
 
