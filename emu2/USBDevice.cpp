@@ -314,14 +314,14 @@ void USBDevice::write(uint32_t addr, uint8_t val)
         case USBReg::TXC3:
         {
             int index = (regAddr - static_cast<int>(USBReg::TXC1)) / 8 + 1;
-            rxEnable[index] = (val & TXCx_EN) != 0;
+            txEnable[index] = (val & TXCx_EN) != 0;
 
             if(val & TXCx_FLUSH)
                 txFifo[index - 1].reset();
 
             // TODO: other bits?
 
-            if(rxEnable[index])
+            if(txEnable[index])
                 printf("USB TX%i\n", index);
             break;
         }
