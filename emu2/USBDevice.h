@@ -112,6 +112,8 @@ private:
     uint8_t altEvent = 0, txEvent = 0, rxEvent = 0, nakEvent = 0;
 
     uint8_t endpointControl[7];
+    uint8_t txCommand[4];
+    uint8_t rxCommand[4];
 
     uint8_t endpointSetupRecv = 0;
 

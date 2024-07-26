@@ -219,6 +219,7 @@ void USBDevice::write(uint32_t addr, uint8_t val)
 
         case USBReg::TXC0:
             txEnable[0] = (val & TXC0_EN) != 0;
+            txCommand[0] = val & ~TXC0_FLUSH; // flush is auto-clear
 
             // TODO: handle unsent data if sending...
             if(val & TXC0_FLUSH)
@@ -273,6 +274,7 @@ void USBDevice::write(uint32_t addr, uint8_t val)
 
         case USBReg::RXC0:
             rxEnable[0] = (val & RXC0_EN) != 0;
+            rxCommand[0] = val & ~RXC0_FLUSH; // flush is auto-clear
 
             if(val & RXC0_FLUSH)
                 controlFIFO.reset();
@@ -315,6 +317,7 @@ void USBDevice::write(uint32_t addr, uint8_t val)
         {
             int index = (regAddr - static_cast<int>(USBReg::TXC1)) / 8 + 1;
             txEnable[index] = (val & TXCx_EN) != 0;
+            txCommand[index] = val & ~(TXCx_FLUSH | TXCx_RFF); // flush is auto-clear
 
             if(val & TXCx_FLUSH)
                 txFifo[index - 1].reset();
@@ -332,6 +335,7 @@ void USBDevice::write(uint32_t addr, uint8_t val)
         {
             int index = (regAddr - static_cast<int>(USBReg::RXC1)) / 8 + 1;
             rxEnable[index] = (val & RXCx_EN) != 0;
+            rxCommand[index] = val & ~RXCx_FLUSH; // flush is auto-clear
 
             if(val & RXCx_FLUSH)
                 rxFifo[index - 1].reset();
