@@ -367,6 +367,7 @@ int main(int argc, char *args[])
     bool persistExtRAM = true;
     std::string serialBootFile;
     std::string cyIDStr = "FAKECYB";
+    bool usbip = false;
 
     bool benchmarkMode = false;
     int64_t benchmarkCycles = 0;
@@ -393,6 +394,8 @@ int main(int argc, char *args[])
         }
         else if(arg == "--classic")
             xtreme = false;
+        else if(arg == "--usbip")
+            usbip = true;
     }
 
     // CPU init
@@ -458,6 +461,9 @@ int main(int argc, char *args[])
         // can still boot over serial
         if(!serialBootFile.empty())
             static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
+
+        if(usbip)
+            usb->startEnumeration();
     }
     else
     {
@@ -592,6 +598,9 @@ int main(int argc, char *args[])
                     running = false;
             }
         }
+
+        if(usbip)
+            usb->usbipUpdate();
 
         //update screen
         // TODO: sync
