@@ -52,6 +52,9 @@ uint8_t USBDevice::read(uint32_t addr)
 
     switch(static_cast<USBReg>(regAddr))
     {
+        case USBReg::RID:
+            return 2;
+
         case USBReg::MAEV:
             return getMAEV();
         case USBReg::MAMSK:
@@ -83,6 +86,9 @@ uint8_t USBDevice::read(uint32_t addr)
         case USBReg::NAKMSK:
             return nakMask;
 
+        case USBReg::EPC0:
+            return endpointControl[0];
+
         case USBReg::TXS0:
         {
             // ack?
@@ -91,6 +97,12 @@ uint8_t USBDevice::read(uint32_t addr)
             updateInterrupt();
             return (done ? TXS0_DONE | TXS0_ACK_STAT : 0) | (8 - controlFIFO.getFilled());
         }
+
+        case USBReg::TXC0:
+        case USBReg::TXC1:
+        case USBReg::TXC2:
+        case USBReg::TXC3:
+            return txCommand[(addr - static_cast<int>(USBReg::TXC0)) / 8];
 
         case USBReg::RXS0:
         {
@@ -104,6 +116,12 @@ uint8_t USBDevice::read(uint32_t addr)
             return (setup ? RXS0_SETUP : 0) | controlFIFO.getFilled();
         }
     
+        case USBReg::RXC0:
+        case USBReg::RXC1:
+        case USBReg::RXC2:
+        case USBReg::RXC3:
+            return rxCommand[(addr - static_cast<int>(USBReg::RXC0)) / 8];
+
         case USBReg::RXD0:
         {
             uint8_t v = 0;
@@ -111,6 +129,17 @@ uint8_t USBDevice::read(uint32_t addr)
                 v = controlFIFO.pop();
 
             return v;
+        }
+
+        case USBReg::EPC1:
+        case USBReg::EPC2:
+        case USBReg::EPC3:
+        case USBReg::EPC4:
+        case USBReg::EPC5:
+        case USBReg::EPC6:
+        {
+            int index = (regAddr - static_cast<int>(USBReg::EPC1)) / 4 + 1;
+            return endpointControl[index];
         }
 
         case USBReg::TXS1:
