@@ -2,7 +2,7 @@
 
 #include "BootSerial.h"
 
-uint32_t crc32(uint8_t *, int);
+#include "CRC.h"
 
 BootSerial::BootSerial(int index) : index(index)
 {

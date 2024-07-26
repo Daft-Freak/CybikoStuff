@@ -10,6 +10,7 @@ add_subdirectory(usbip-server)
 
 set(SOURCES
     BootSerial.cpp
+    CRC.cpp
     DS2401.cpp
     H8CPU.cpp
     KeyboardDevice.cpp
