@@ -316,16 +316,37 @@ void USBDevice::write(uint32_t addr, uint8_t val)
         case USBReg::TXC3:
         {
             int index = (regAddr - static_cast<int>(USBReg::TXC1)) / 8 + 1;
+            auto &fifo = txFifo[index - 1];
             txEnable[index] = (val & TXCx_EN) != 0;
             txCommand[index] = val & ~(TXCx_FLUSH | TXCx_RFF); // flush is auto-clear
 
             if(val & TXCx_FLUSH)
-                txFifo[index - 1].reset();
+                fifo.reset();
 
             // TODO: other bits?
 
             if(txEnable[index])
-                printf("USB TX%i\n", index);
+            {
+                int ep = endpointControl[index * 2 - 1] & EPC_ADDR_MASK;
+                bool last = val & TXCx_LAST;
+                if(usbipServer && usbipInSeqnum[ep])
+                {
+                    while(!fifo.empty() && usbipInDataOffset[ep] < usbipInDataLen[ep])
+                        usbipInData[ep][usbipInDataOffset[ep]++] = fifo.pop();
+
+                    if(usbipInDataOffset[ep] == usbipInDataLen[ep] || last)
+                    {
+                        usbip_client_reply(usbipLastClient, usbipInSeqnum[ep], usbipInData[ep], usbipInDataOffset[ep]);
+                        usbipInSeqnum[ep] = 0;
+                    }
+                }
+
+                if(fifo.empty())
+                {
+                    txEvent |= 1 << index;
+                    updateInterrupt();
+                }
+            }
             break;
         }
 
@@ -342,8 +363,8 @@ void USBDevice::write(uint32_t addr, uint8_t val)
 
             // TODO: other bits?
 
-            if(rxEnable[index])
-                printf("USB RX%i\n", index);
+            //if(rxEnable[index])
+            //    printf("USB RX%i\n", index);
             break;
         }
 
@@ -465,13 +486,89 @@ bool USBDevice::usbipControlRequest(usbip_client *client, uint32_t seqnum, uint8
 
 bool USBDevice::usbipIn(usbip_client *client, uint32_t seqnum, int ep, uint32_t length)
 {
-    printf("usbip in %i %i %i\n", seqnum, ep, length);
-    return false;
+    // map endpoint
+    int fifoIndex = -1;
+
+    for(int i = 1; i < 7; i += 2) // TX is 1, 3 and 5
+    {
+        if((endpointControl[i] & EPCx_EN) && (endpointControl[i] & EPC_ADDR_MASK) == ep)
+        {
+            fifoIndex = i / 2;
+            break;
+        }
+    }
+
+    if(fifoIndex == -1)
+        return false;
+
+    // setup buffer
+    if(usbipInData[ep])
+        delete[] usbipInData[ep];
+
+    usbipInData[ep] = new uint8_t[length];
+
+    usbipInDataLen[ep] = length;
+    usbipInDataOffset[ep] = 0;
+
+    usbipInSeqnum[ep] = seqnum;
+    usbipLastClient = client;
+
+    // there's data waiting, add it now
+    if(txEnable[fifoIndex + 1])
+    {
+        auto &fifo = txFifo[fifoIndex];
+        bool last = txCommand[fifoIndex + 1] & TXCx_LAST;
+
+        while(!fifo.empty() && usbipInDataOffset[ep] < usbipInDataLen[ep])
+            usbipInData[ep][usbipInDataOffset[ep]++] = fifo.pop();
+
+        if(usbipInDataOffset[ep] == usbipInDataLen[ep] || last)
+        {
+            usbip_client_reply(usbipLastClient, usbipInSeqnum[ep], usbipInData[ep], usbipInDataOffset[ep]);
+            usbipInSeqnum[ep] = 0;
+        }
+
+        // unless there was a mismatch, fifo should be empty
+        txEvent |= 1 << (fifoIndex + 1);
+        updateInterrupt();
+    }
+
+    return true;
 }
 
 bool USBDevice::usbipOut(usbip_client *client, uint32_t seqnum, int ep, uint32_t length, const uint8_t *data)
 {
-    printf("usbip out %i %i %i\n", seqnum, ep, length);
+    // map endpoint
+    int fifoIndex = -1;
+
+    for(int i = 2; i < 7; i += 2) // RX is 2, 4 and 6
+    {
+        if((endpointControl[i] & EPCx_EN) && (endpointControl[i] & EPC_ADDR_MASK) == ep)
+        {
+            fifoIndex = (i - 1) / 2;
+            break;
+        }
+    }
+
+    if(fifoIndex == -1)
+        return false;
+
+    if(length <= 64 && rxEnable[fifoIndex + 1])
+    {
+        // shortcut, it fits in the fifo
+        for(unsigned i = 0; i < length; i++)
+            rxFifo[fifoIndex].push(data[i]);
+
+        rxEvent |= 1 << (fifoIndex + 1);
+        updateInterrupt();
+
+        usbip_client_reply(usbipLastClient, seqnum, nullptr, length);
+
+        return true;
+    }
+    else
+        printf("\tBIG out/not en!\n");
+
     return false;
 }
 
