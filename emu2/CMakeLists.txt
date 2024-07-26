@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_subdirectory(usbip-server)
 
 set(SOURCES
+    BootSerial.cpp
     DS2401.cpp
     H8CPU.cpp
     KeyboardDevice.cpp

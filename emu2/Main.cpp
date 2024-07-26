@@ -7,6 +7,7 @@
 
 #include <SDL.h>
 
+#include "BootSerial.h"
 #include "DS2401.h"
 #include "H8CPU.h"
 #include "KeyboardDevice.h"
@@ -148,137 +149,6 @@ protected:
     {
 
     }
-};
-
-
-// used for logging and commands at boot
-// main serial port / Serial2 on classic
-// cart port / Serial1 on xtreme (used for SD card later)
-class BootSerial final : public SerialDevice
-{
-public:
-    BootSerial(int index) : index(index)
-    {
-    }
-
-    uint8_t read() override
-    {
-        if(gotPrepareMsg && bootBufOff < bootBufLen)
-            return bootBuf[bootBufOff++];
-
-        return 0xFF;
-    }
-
-    void write(uint8_t val) override
-    {
-        if(!sdMode)
-        {
-            // buffer/print (has boot messages)
-            logBuffer << val;
-
-            if(val == '\n')
-            {
-                // send boot file
-                if(logBuffer.str() == "Preparing to load CyOS\r\n")
-                    gotPrepareMsg = true;
-                else if(logBuffer.str().compare(0, 4, "send") == 0 && bootFile.is_open())
-                {
-                    // send file
-                    int chunkIndex = std::stoi(logBuffer.str().substr(4));
-                    const int chunkSize = 512;
-
-                    bootFile.clear(); // clear eof
-                    bootFile.seekg(chunkIndex * chunkSize);
-                    bootFile.read(reinterpret_cast<char *>(bootBuf + 5), chunkSize);
-
-                    auto read = bootFile.gcount();
-
-                    std::cout << "send boot chunk " << chunkIndex << " " << read << "/" << chunkSize << "\n";
-
-                    bootBuf[0] = 'C';
-                    bootBuf[1] = chunkIndex & 0xFF;
-                    bootBuf[2] = chunkIndex >> 8;
-                    bootBuf[3] = read & 0xFF;
-                    bootBuf[4] = read >> 8;
-
-                    uint32_t crc = ~crc32(bootBuf + 1, read + 4);
-
-                    bootBuf[read + 5] = crc & 0xFF;
-                    bootBuf[read + 6] = (crc >> 8) & 0xFF;
-                    bootBuf[read + 7] = (crc >> 16) & 0xFF;
-                    bootBuf[read + 8] = crc >> 24;
-
-                    bootBufOff = 0;
-                    bootBufLen = read + 9;
-                }
-
-                std::cout << "SERIAL" << index << ": " << logBuffer.str() << std::endl;
-                logBuffer.str("");
-
-            }
-            else if(val == 0xFF && index == 1) // probably doing SPI now
-            {
-                std::cout << "Switching serial 1 to SD card...\n";
-                sdMode = true;
-            }
-            return;
-        }
-    }
-
-    bool canRead() override
-    {
-        if(gotPrepareMsg && bootBufOff < bootBufLen)
-            return true;
-
-        return false;
-    }
-
-    void setBootFile(std::string filename)
-    {
-        bootFile.open(filename, std::ios::binary);
-
-        bootFile.seekg(0, std::ios::end);
-        int fileSize = bootFile.tellg();
-        bootFile.seekg(0);
-
-        std::cout << "Booting " << filename << " (" << fileSize << " bytes)\n";
-
-        bootBufLen = snprintf(reinterpret_cast<char *>(bootBuf), sizeof(bootBuf), "rcv file.boot %i\n", fileSize);
-
-        uint16_t crcVal = crc(reinterpret_cast<uint8_t *>(bootBuf), bootBufLen - 1);
-
-        // doesn't seem to matter...
-        bootBuf[bootBufLen++] = crcVal & 0xFF;
-        bootBuf[bootBufLen++] = crcVal >> 8;
-    }
-private:
-    uint16_t crc(uint8_t *data, int length)
-    {
-        uint32_t crc = 0;
-
-        for(int i = 0; i < length; i++)
-            crc = (crc << 1) ^ (data[i] << 1);
-
-        crc = (crc & 0xFFFF) ^ (crc >> 17);
-
-        return crc;
-    }
-
-    int index;
-
-    // log port
-    std::stringstream logBuffer;
-
-    // port also connected to SD card
-    bool sdMode;
-
-    // for booting a file
-    bool gotPrepareMsg = false;
-
-    uint8_t bootBuf[512 + 9];
-    int bootBufLen = 0, bootBufOff = 0;
-
-    std::ifstream bootFile;
 };
 
 class Port1Classic final : public IODevice
