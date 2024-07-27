@@ -10,12 +10,15 @@ class RFSerial final : public SerialDevice
 {
 public:
     RFSerial();
+    ~RFSerial();
 
     uint8_t read() override;
 
     void write(uint8_t val) override;
 
     bool canRead() override;
+
+    void networkUpdate();
 
 private:
     uint8_t buf[202];
@@ -24,6 +27,10 @@ private:
 
     // output
     std::deque<uint8_t> writeQueue;
+
+    // network
+    int recvFd, sendFd;
+    void *sendAddr; // avoiding network headers
 };
 
 #endif
