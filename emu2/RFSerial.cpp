@@ -10,7 +10,9 @@ RFSerial::RFSerial()
 
 uint8_t RFSerial::read()
 {
-    return 0xFF;
+    auto val = writeQueue.front();
+    writeQueue.pop_front();
+    return val;
 }
 
 void RFSerial::write(uint8_t val)
@@ -83,7 +85,8 @@ void RFSerial::write(uint8_t val)
             }
             printf("\n");
 
-            // FIXME: reply 0x03
+            // should be a delay here...
+            writeQueue.push_back(0x03);
         }
         else
         {
@@ -102,5 +105,5 @@ void RFSerial::write(uint8_t val)
 
 bool RFSerial::canRead()
 {
-    return false;
+    return !writeQueue.empty();;
 }

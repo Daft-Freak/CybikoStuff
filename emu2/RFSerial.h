@@ -1,6 +1,8 @@
 #ifndef RFSERIAL_H
 #define RFSERIAL_H
 
+#include <deque>
+
 #include "H8CPU.h"
 
 // Serial0 on classic, 2 on xtreme
@@ -19,6 +21,9 @@ private:
     uint8_t buf[202];
     int bufOffset = 0;
     int messageLen = 0;
+
+    // output
+    std::deque<uint8_t> writeQueue;
 };
 
 #endif
