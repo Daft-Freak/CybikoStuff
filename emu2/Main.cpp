@@ -15,6 +15,7 @@
 #include "LCDDevice.h"
 #include "MemoryDevice.h"
 #include "PCF8593.h"
+#include "RFSerial.h"
 #include "SerialFlash.h"
 #include "USBDevice.h"
 
@@ -244,6 +245,7 @@ int main(int argc, char *args[])
     std::unique_ptr<PCF8593> rtc;
 
     std::unique_ptr<SerialDevice> bootSerial;
+    auto rfSerial = std::make_unique<RFSerial>(); //cpu?
     
     // xtreme
     auto usb = std::make_unique<USBDevice>(cpu);
@@ -275,6 +277,7 @@ int main(int argc, char *args[])
 
         bootSerial = std::make_unique<BootSerial>(1);
         cpu.setSerialDevice(1, bootSerial.get());
+        cpu.setSerialDevice(2, rfSerial.get());
 
         // load rom/flash/ram dumps
         deviceDataPath = dataPath + cyIDStr + "/";
@@ -318,6 +321,7 @@ int main(int argc, char *args[])
         serialFlash = std::make_unique<SerialFlash>();
         bootSerial = std::make_unique<BootSerial>(2);
 
+        cpu.setSerialDevice(0, rfSerial.get());
         cpu.setSerialDevice(1, serialFlash.get());
         cpu.setSerialDevice(2, bootSerial.get());
 
@@ -436,6 +440,8 @@ int main(int argc, char *args[])
 
         if(usbip)
             usb->usbipUpdate();
+
+        rfSerial->networkUpdate();
 
         //update screen
         // TODO: sync
