@@ -135,7 +135,7 @@ void XtremeKeyboardDevice::updateKey(SDL_Keysym sym, bool down)
     static const int rows[]
     {
         -1, -1, -1, -1,  2,  2,  9,  8, // A-D
-         7, 12,  1,  4,  2,  7, 11, 14, // E-L
+         7, 12,  1,  4, 12,  7, 11, 14, // E-L
          8,  3, 13,  4,  1, 13,  5, 14, // M-T
          6, 11,  6,  4,  5,  3, -1, -1, // U-Z 1-2
         -1, -1, -1, -1, -1, -1, -1, -1, // 3-0
