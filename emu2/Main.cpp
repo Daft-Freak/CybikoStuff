@@ -181,8 +181,6 @@ int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
 
-    initCRCTables();
-
     if(SDL_Init(SDL_INIT_TIMER) < 0)
         return 1;
 
