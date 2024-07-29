@@ -155,6 +155,8 @@ public:
     void addIODevice(IOPort port, IODevice *device);
     void setSerialDevice(int index, SerialDevice *device);
 
+    void setADCValue(unsigned channel, uint16_t value);
+
     bool getSleeping() const;
     uint64_t getClock() const;
 
@@ -420,6 +422,8 @@ protected:
     int a2dConversionTime = 266, a2dConvCounter = 266;
     int a2dChannel = 0, a2dEndChannel = 0;
     uint16_t a2dData[4]{0};
+
+    uint16_t a2dValues[8]; // raw 10-bit values
 
     bool sleeping;
     uint64_t clock;

@@ -64,6 +64,9 @@ void H8CPU::reset()
         en = 0;
 
     //TODO: reset peripherals...
+
+    for(auto &v : a2dValues)
+        v = 0x1FF; // ~half
 }
 
 void H8CPU::interrupt(InterruptSource source)
@@ -1038,6 +1041,12 @@ void H8CPU::addIODevice(::IOPort port, IODevice *device)
 void H8CPU::setSerialDevice(int index, SerialDevice *device)
 {
     serialPorts[index].setDevice(device);
+}
+
+void H8CPU::setADCValue(unsigned channel, uint16_t value)
+{
+    if(channel < 8)
+        a2dValues[channel] = value;
 }
 
 bool H8CPU::getSleeping() const
@@ -2190,7 +2199,7 @@ void H8CPU::updateADC(int cycles)
 
     if(a2dConvCounter <= 0)
     {
-        a2dData[a2dChannel & 3] = 0x7FC0; // middle-ish... (10 bit value)
+        a2dData[a2dChannel & 3] = a2dValues[a2dChannel] << 6;
 
         //if(a2dChannel == 3) // cart detect
         //    a2dData[3] = 0; // < 16 is cart 0, 16-27 is cart 1, ... 965-1022 is cart 33, 1023 is no cart
