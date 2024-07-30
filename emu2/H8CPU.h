@@ -363,6 +363,8 @@ protected:
     int byteAccessTiming(uint32_t addr) const;
     int wordAccessTiming(uint32_t addr) const;
 
+    void updateBusTimings();
+
     // reg helpers
     template<class T>
     inline T reg(int r) const;
@@ -399,6 +401,11 @@ protected:
     uint8_t ram[0x2000]{0};
 
     ExternalAddressDevice *externalAreas[8]{nullptr};
+
+    // bus control
+    uint8_t busWidthControl = 0xFF;
+    uint8_t busWaitControl = 0xFF;
+    uint16_t busWaits = 0xFFFF;
 
     // interrupt regs
     uint8_t irqEnable, irqStatus;

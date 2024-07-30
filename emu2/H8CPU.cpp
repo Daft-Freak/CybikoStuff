@@ -63,10 +63,11 @@ void H8CPU::reset()
     for(auto &en : dtcEnable)
         en = 0;
 
-    for(int &c : areaAccessCycles8)
-        c = 2;
-    for(int &c : areaAccessCycles16)
-        c = 2;
+    busWaitControl = 0xFF;
+    busWidthControl = 0xFF;
+    busWaits = 0xFFFF;
+
+    updateBusTimings();
 
     //TODO: reset peripherals...
 
@@ -3723,6 +3724,22 @@ int H8CPU::wordAccessTiming(uint32_t addr) const
     return areaAccessCycles16[7];
 }
 
+void H8CPU::updateBusTimings()
+{
+    for(int i = 0; i < 8; i++)
+    {
+        if(busWaitControl & (1 << i)) // waits enabled
+            areaAccessCycles8[i] = 3 + ((busWaits >> (i * 2)) & 3);
+        else
+            areaAccessCycles8[i] = 2;
+
+        if(busWidthControl & (1 << i)) // 8-bit
+            areaAccessCycles16[i] = areaAccessCycles8[i] * 2;
+        else
+            areaAccessCycles16[i] = areaAccessCycles8[i];
+    }
+}
+
 // assuming little endian here
 template<>
 uint8_t H8CPU::reg(int r) const
@@ -4037,6 +4054,23 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
 
     switch(addr)
     {
+        case 0xED0: // ABWCR
+            busWidthControl = val;
+            updateBusTimings();
+            break;
+        case 0xED1: // ASTCR
+            busWaitControl = val;
+            updateBusTimings();
+            break;
+        case 0xED2: // WCRH
+            busWaits = (busWaits & 0xFF) | val << 8;
+            updateBusTimings();
+            break;
+        case 0xED3: // WCRL
+            busWaits = (busWaits & 0xFF00) | val;
+            updateBusTimings();
+            break;
+
         case 0xED7: // DRAMCR
             break;
 
