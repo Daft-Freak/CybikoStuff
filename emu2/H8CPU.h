@@ -391,6 +391,8 @@ protected:
 
     uint8_t *areaPtrs[8]{nullptr};
     uint32_t areaMasks[8]{0x1FFFFF};
+    int areaAccessCycles8[8];
+    int areaAccessCycles16[8];
 
     static const int romSize = 0x10000; //assume EAE=1
     uint8_t rom[romSize]{0};

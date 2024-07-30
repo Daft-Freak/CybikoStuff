@@ -63,6 +63,11 @@ void H8CPU::reset()
     for(auto &en : dtcEnable)
         en = 0;
 
+    for(int &c : areaAccessCycles8)
+        c = 2;
+    for(int &c : areaAccessCycles16)
+        c = 2;
+
     //TODO: reset peripherals...
 
     for(auto &v : a2dValues)
@@ -3676,26 +3681,46 @@ int H8CPU::fetchTiming(int len) const
 
 int H8CPU::byteAccessTiming(uint32_t addr) const
 {
-    // on-chip ram/rom
-    if(addr < romSize || (addr >= 0xFFDC00 && addr < 0xFFFC00))
+    // on-chip rom
+    if(addr < romSize)
         return 1;
 
-    if((addr >= 0xFFFE50 && addr < 0xFFFF08) || (addr >= 0xFFFF28 && addr <= 0xFFFFFF))
+    int area = (addr /*/ 0x200000*/ >> 21) & 7;
+
+    // area 1-6 is easy (+ the rest of 0)
+    if(area < 7)
+        return areaAccessCycles8[area];
+
+    // on-chip ram
+    if(addr >= 0xFFDC00 && addr < 0xFFFC00)
+        return 1;
+
+    if((addr >= 0xFFFE50 && addr < 0xFFFF08) || addr >= 0xFFFF28)
         return 2; // on-chip module
 
-    return 2; // TODO 2/3 state access
+    return areaAccessCycles8[7];
 }
 
 int H8CPU::wordAccessTiming(uint32_t addr) const
 {
-    // on-chip ram/rom
-    if(addr < romSize || (addr >= 0xFFDC00 && addr < 0xFFFC00))
+    // on-chip rom
+    if(addr < romSize)
         return 1;
 
-    if((addr >= 0xFFFE50 && addr < 0xFFFF08) || (addr >= 0xFFFF28 && addr <= 0xFFFFFF))
+    int area = (addr /*/ 0x200000*/ >> 21) & 7;
+
+    // area 1-6 is easy (+ the rest of 0)
+    if(area < 7)
+        return areaAccessCycles16[area];
+
+    // on-chip ram
+    if(addr >= 0xFFDC00 && addr < 0xFFFC00)
+        return 1;
+
+    if((addr >= 0xFFFE50 && addr < 0xFFFF08) || addr >= 0xFFFF28)
         return 2; // TODO: on-chip module 8/16 bit
 
-    return 2; // TODO: 8/16 bit bus, 2/3 state access
+    return areaAccessCycles16[7];
 }
 
 // assuming little endian here
