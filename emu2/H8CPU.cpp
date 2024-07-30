@@ -3818,7 +3818,7 @@ uint32_t &H8CPU::reg(int r)
     return er[r];
 }
 
-uint8_t H8CPU::readByte(uint32_t addr) const
+uint8_t H8CPU::readByte(uint32_t addr)
 {
     // easily mapped memories
     int area = (addr /*/ 0x200000*/ >> 21) & 7;
@@ -3851,12 +3851,12 @@ uint8_t H8CPU::readByte(uint32_t addr) const
     return 0xFF;
 }
 
-uint16_t H8CPU::readWord(uint32_t addr) const
+uint16_t H8CPU::readWord(uint32_t addr)
 {
     return (readByte(addr) << 8) | readByte(addr + 1);
 }
 
-uint32_t H8CPU::readLong(uint32_t addr) const
+uint32_t H8CPU::readLong(uint32_t addr)
 {
     // happens in realloc(NULL, ...), called from buffer init
     // apparently works fine, so avoid complaining about it...
@@ -3875,7 +3875,7 @@ uint32_t H8CPU::readLong(uint32_t addr) const
     return (readByte(addr) << 24) | (readByte(addr + 1) << 16) | (readByte(addr + 2) << 8) | readByte(addr + 3);
 }
 
-uint32_t H8CPU::readAddr16(uint32_t addr) const
+uint32_t H8CPU::readAddr16(uint32_t addr)
 {
     //16-bit addresses get sign extended
     uint32_t ret = readWord(addr);
@@ -3885,7 +3885,7 @@ uint32_t H8CPU::readAddr16(uint32_t addr) const
     return ret;
 }
 
-uint32_t H8CPU::readDisp16(uint32_t addr) const
+uint32_t H8CPU::readDisp16(uint32_t addr)
 {
     //16-bit displacements get sign extended
     uint32_t ret = readWord(addr);
@@ -3930,7 +3930,7 @@ void H8CPU::writeLong(uint32_t addr, uint32_t val)
     writeByte(addr + 3, val & 0xFF);
 }
 
-uint8_t H8CPU::readIOReg(uint32_t addr) const
+uint8_t H8CPU::readIOReg(uint32_t addr)
 {
     addr = addr & 0xFFF;
 

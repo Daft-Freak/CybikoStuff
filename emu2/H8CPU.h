@@ -371,20 +371,20 @@ protected:
     template<class T>
     inline T &reg(int r);
 
-    uint8_t readByte(uint32_t addr) const;
-    uint16_t readWord(uint32_t addr) const;
-    uint32_t readLong(uint32_t addr) const;
+    uint8_t readByte(uint32_t addr);
+    uint16_t readWord(uint32_t addr);
+    uint32_t readLong(uint32_t addr);
 
     // 16-bit address/displacement
-    inline uint32_t readAddr16(uint32_t addr) const;
-    inline uint32_t readDisp16(uint32_t addr) const;
+    inline uint32_t readAddr16(uint32_t addr);
+    inline uint32_t readDisp16(uint32_t addr);
 
     // memory
     void writeByte(uint32_t addr, uint8_t val);
     void writeWord(uint32_t addr, uint16_t val);
     void writeLong(uint32_t addr, uint32_t val);
 
-    uint8_t readIOReg(uint32_t addr) const;
+    uint8_t readIOReg(uint32_t addr);
     void writeIOReg(uint32_t addr, uint8_t val);
 
     uint32_t er[8]{0};
