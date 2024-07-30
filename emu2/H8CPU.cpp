@@ -139,7 +139,7 @@ bool H8CPU::executeCycles(int cycles)
             for(int i = 0; i < 6; i++)
             {
                 if(tpuStart & (1 << i))
-                    tpuChannels[i].update(*this, executed);
+                    tpuChannels[i].updateForInterrupts(*this);
             }
         }
 
@@ -1568,19 +1568,24 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
     }
 }
 
-void H8CPU::TPU::update(H8CPU &cpu, int cycles)
+void H8CPU::TPU::update(H8CPU &cpu)
 {
-    if(!clockDiv)
+    if(!clockDiv || !(cpu.tpuStart & (1 << index)))
+    {
+        lastUpdate = cpu.getClock();
         return;
+    }
 
-    frac += cycles;
+    int elapsed = cpu.getClock() - lastUpdate;
 
-    int inc = frac >> clockShift;
+    int inc = (frac + elapsed) >> clockShift;
 
     if(!inc)
         return;
 
-    frac &= clockDiv - 1;
+    frac = (frac + elapsed) & (clockDiv - 1);
+
+    lastUpdate = cpu.getClock();
 
     // skip checking compare/overflow
     int incCounter = static_cast<int>(counter) + inc;
@@ -1687,6 +1692,12 @@ void H8CPU::TPU::update(H8CPU &cpu, int cycles)
     }
 
     calcNextUpdate();
+}
+
+void H8CPU::TPU::updateForInterrupts(H8CPU &cpu)
+{
+    if(interruptEnable)
+        update(cpu);
 }
 
 void H8CPU::TPU::calcNextUpdate()
@@ -3917,7 +3928,11 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
 
     // TPU 3 - 5
     if(addr >= 0xE80 && addr <= 0xEAB)
-        return tpuChannels[(addr - 0xE80) / 16 + 3].getReg(addr & 0xF);
+    {
+        int chan = (addr - 0xE80) / 16 + 3;
+        tpuChannels[chan].update(*this);
+        return tpuChannels[chan].getReg(addr & 0xF);
+    }
 
     // DMAC
     if(addr >= 0xEE0 && addr <= 0xEFF)
@@ -3945,7 +3960,11 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
 
     // TPU 0 - 2
     if(addr >= 0xFD0 && addr <= 0xFFB)
-        return tpuChannels[(addr - 0xFD0) / 16].getReg(addr & 0xF);
+    {
+        int chan = (addr - 0xFD0) / 16;
+        tpuChannels[chan].update(*this);
+        return tpuChannels[chan].getReg(addr & 0xF);
+    }
 
     switch(addr)
     {
@@ -4035,7 +4054,9 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // TPU 3 - 5
     if(addr >= 0xE80 && addr <= 0xEAB)
     {
-        tpuChannels[(addr - 0xE80) / 16 + 3].setReg(addr & 0xF, val);
+        int chan = (addr - 0xE80) / 16 + 3;
+        tpuChannels[chan].update(*this);
+        tpuChannels[chan].setReg(addr & 0xF, val);
         return;
     }
 
@@ -4070,7 +4091,9 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // TPU 0 - 2
     if(addr >= 0xFD0 && addr <= 0xFFB)
     {
-        tpuChannels[(addr - 0xFD0) / 16].setReg(addr & 0xF, val);
+        int chan = (addr - 0xFD0) / 16;
+        tpuChannels[chan].update(*this);
+        tpuChannels[chan].setReg(addr & 0xF, val);
         return;
     }
 
@@ -4198,9 +4221,18 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xFBD: //weirdness
             break;
 
-        case 0xFC0:
+        case 0xFC0: // TSTR
+        {
+            auto changed = tpuStart ^ val;
+            for(int i = 0; i < 6; i++)
+            {
+                // update any channels that are getting stopped/started
+                if(changed & (1 << i))
+                    tpuChannels[i].update(*this);
+            }
             tpuStart = val;
             break;
+        }
 
         default:
             //std::cout << "io reg write " << std::hex << addr << " = " << static_cast<int>(val) << " @~" << pc << std::dec << std::endl;

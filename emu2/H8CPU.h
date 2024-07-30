@@ -220,7 +220,8 @@ protected:
         uint8_t getReg(int addr) const;
         void setReg(int addr, uint8_t val);
 
-        void update(H8CPU &cpu, int cycles);
+        void update(H8CPU &cpu);
+        void updateForInterrupts(H8CPU &cpu);
 
     protected:
         void calcNextUpdate();
@@ -230,6 +231,7 @@ protected:
         int clockDiv = 0, clockShift = 0;
         int frac = 0;
 
+        uint32_t lastUpdate = 0;
         int nextUpdate = 0;
         int clearOn = 0;
 
