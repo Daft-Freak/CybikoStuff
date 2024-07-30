@@ -161,25 +161,6 @@ bool H8CPU::executeCycles(int cycles)
 
         if(!(mstpcr & MSTPCR_A2D))
             updateADC(executed);
-
-        // DMAC/DTC can be activated by interrupts, so do these right before serviceInterrupt
-        if(!(mstpcr & MSTPCR_DMAC))
-        {
-            // this is actually the same register...
-            if(dmaChannels[0].bandControl & 0x30)
-                dmaChannels[0].transfer(*this);
-
-            if(dmaChannels[0].bandControl & 0xC0)
-                dmaChannels[1].transfer(*this);
-        }
-
-        bool dtcTriggered = false;
-
-        if(!(mstpcr & MSTPCR_DTC))
-            dtcTriggered = updateDTC();
-
-        if(!dtcTriggered)
-            serviceInterrupt();
     }
     return true;
 }
