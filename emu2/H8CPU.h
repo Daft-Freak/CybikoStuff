@@ -231,7 +231,8 @@ protected:
         int clockDiv = 0, clockShift = 0;
         int frac = 0;
 
-        uint32_t lastUpdate = 0;
+        uint32_t lastUpdateCycle = 0;
+        uint32_t nextUpdateCycle = 0;
         int nextUpdate = 0;
         int clearOn = 0;
 

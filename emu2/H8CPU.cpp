@@ -1523,6 +1523,8 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
             if(clearOn == 3 || clearOn == 7)
                 std::cout << "TPU" << index << " clear on sync\n";
 
+            calcNextUpdate();
+
             break;
         }
 
@@ -1572,20 +1574,18 @@ void H8CPU::TPU::update(H8CPU &cpu)
 {
     if(!clockDiv || !(cpu.tpuStart & (1 << index)))
     {
-        lastUpdate = cpu.getClock();
+        lastUpdateCycle = cpu.getClock();
         return;
     }
 
-    int elapsed = cpu.getClock() - lastUpdate;
+    int elapsed = cpu.getClock() - lastUpdateCycle;
+    lastUpdateCycle = cpu.getClock();
 
-    int inc = (frac + elapsed) >> clockShift;
+    frac += elapsed;
 
-    if(!inc)
-        return;
+    int inc = frac >> clockShift;
 
-    frac = (frac + elapsed) & (clockDiv - 1);
-
-    lastUpdate = cpu.getClock();
+    frac &= clockDiv - 1;
 
     // skip checking compare/overflow
     int incCounter = static_cast<int>(counter) + inc;
@@ -1595,9 +1595,12 @@ void H8CPU::TPU::update(H8CPU &cpu)
         return;
     }
 
-    while(inc--)
+    while(inc)
     {
-        counter++;
+        int step = std::min(inc, nextUpdate - counter);
+
+        counter += step;
+        inc -= step;
 
         if(counter == 0)
         {
@@ -1666,7 +1669,10 @@ void H8CPU::TPU::update(H8CPU &cpu)
         }
 
         if(index != 0 && index != 3)
+        {
+            calcNextUpdate();
             continue;
+        }
 
         if(counter == general[2])
         {
@@ -1689,14 +1695,16 @@ void H8CPU::TPU::update(H8CPU &cpu)
             if(interruptEnable & (1 << 3))
                 cpu.interrupt(index == 0 ? InterruptSource::TGI0D : InterruptSource::TGI3D);
         }
-    }
 
-    calcNextUpdate();
+        calcNextUpdate();
+    }
 }
 
 void H8CPU::TPU::updateForInterrupts(H8CPU &cpu)
 {
-    if(interruptEnable)
+    int elapsed = cpu.getClock() - lastUpdateCycle;
+    int toNext = nextUpdateCycle - lastUpdateCycle;
+    if(interruptEnable && elapsed >= toNext)
         update(cpu);
 }
 
@@ -1712,6 +1720,8 @@ void H8CPU::TPU::calcNextUpdate()
         if(general[i] > counter && general[i] < nextUpdate)
             nextUpdate = general[i];
     }
+
+    nextUpdateCycle = lastUpdateCycle + nextUpdate * clockDiv - frac;
 }
 
 uint8_t H8CPU::Timer::getReg(int reg) const
