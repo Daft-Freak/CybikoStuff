@@ -24,7 +24,7 @@ protected:
     const int bit = 2;
     bool prevState = true;
     bool pinVal = true, out = false;
-    uint64_t lastStateTime = 0;
+    uint32_t lastStateTime = 0;
 
     int state = 0; // 1 = reset, 2 = reading data, 3 = writing data
     uint8_t recvData;

@@ -158,7 +158,7 @@ public:
     void setADCValue(unsigned channel, uint16_t value);
 
     bool getSleeping() const;
-    uint64_t getClock() const;
+    uint32_t getClock() const;
 
     uint8_t *getRAM() {return ram;}
 
@@ -435,7 +435,7 @@ protected:
     uint16_t a2dValues[8]; // raw 10-bit values
 
     bool sleeping;
-    uint64_t clock;
+    uint32_t clock;
 };
 
 #endif

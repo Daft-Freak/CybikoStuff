@@ -1060,7 +1060,7 @@ bool H8CPU::getSleeping() const
     return sleeping;
 }
 
-uint64_t H8CPU::getClock() const
+uint32_t H8CPU::getClock() const
 {
     return clock;
 }
