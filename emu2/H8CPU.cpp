@@ -100,10 +100,33 @@ bool H8CPU::executeCycles(int cycles)
 {
     while(cycles > 0)
     {
-        int executed = 1;
+        int executed = 0;
 
-        if(!sleeping && !(executed = executeInstruction()))
+        // DMAC/DTC can be activated by interrupts, so do these right before serviceInterrupt
+        if(!(mstpcr & MSTPCR_DMAC))
+        {
+            // this is actually the same register...
+            if(dmaChannels[0].bandControl & 0x30)
+                executed += dmaChannels[0].transfer(*this);
+
+            if(dmaChannels[0].bandControl & 0xC0)
+                executed += dmaChannels[1].transfer(*this);
+        }
+
+        bool dtcTriggered = false;
+
+        if(!(mstpcr & MSTPCR_DTC))
+            dtcTriggered = updateDTC();
+
+        if(!dtcTriggered)
+            serviceInterrupt();
+
+        // execute CPU instruction if not sleeping
+        int instrExec = 1; // TODO: optimise sleeping
+        if(!sleeping && !(instrExec = executeInstruction()))
             return false;
+
+        executed += instrExec;
 
         cycles -= executed;
         clock += executed;
@@ -1191,34 +1214,42 @@ void H8CPU::DMAChannel::setReg(int addr, uint8_t val)
     }
 }
 
-void H8CPU::DMAChannel::transfer(H8CPU &cpu)
+int H8CPU::DMAChannel::transfer(H8CPU &cpu)
 {
     bool fullAddr = bandControl & (1 << (14 + channel));
+
+    int cycles;
 
     if(fullAddr)
     {
         auto enableMask = 0x30 << (2 * channel);
         // check enabled
         if((bandControl & enableMask) != enableMask)
-            return;
+            return 0;
 
         // not auto mode
         // TODO
         if((control & 0xE) != 0x6)
-            return;
+            return 0;
 
         // not block mode
         // TODO
         if(control & (1 << 11)) // blke
-            return;
+            return 0;
 
         auto size = (control & (1 << 15)) ? 2 : 1;
 
         // transfer
         if(size == 2)
+        {
+            cycles = cpu.wordAccessTiming(memAddrA) + cpu.wordAccessTiming(memAddrB);
             cpu.writeWord(memAddrB, cpu.readWord(memAddrA));
+        }
         else
+        {
+            cycles = cpu.byteAccessTiming(memAddrA) + cpu.byteAccessTiming(memAddrB);
             cpu.writeByte(memAddrB, cpu.readByte(memAddrA));
+        }
 
         countA--;
 
@@ -1246,9 +1277,11 @@ void H8CPU::DMAChannel::transfer(H8CPU &cpu)
     {
         // TODO: single address
         if(bandControl & 1 << (12 + channel))
-            return;
+            return 0;
 
-        auto doSubChannel = [this, &cpu](uint8_t chanControl, int channelShift, uint32_t &memAddr, uint16_t ioAddr, uint16_t &count, InterruptSource interrupt)
+        cycles = 0;
+
+        auto doSubChannel = [this, &cpu, &cycles](uint8_t chanControl, int channelShift, uint32_t &memAddr, uint16_t ioAddr, uint16_t &count, InterruptSource interrupt)
         {
             if(!(bandControl & (0x10 << channelShift))) // enabled
                 return;
@@ -1330,9 +1363,15 @@ void H8CPU::DMAChannel::transfer(H8CPU &cpu)
 
             // transfer
             if(size == 2)
+            {
+                cycles += cpu.wordAccessTiming(srcAddr) + cpu.wordAccessTiming(dstAddr);
                 cpu.writeWord(dstAddr, cpu.readWord(srcAddr));
+            }
             else
+            {
+                cycles += cpu.byteAccessTiming(srcAddr) + cpu.byteAccessTiming(dstAddr);
                 cpu.writeByte(dstAddr, cpu.readByte(srcAddr));
+            }
 
             count--;
 
@@ -1373,6 +1412,8 @@ void H8CPU::DMAChannel::transfer(H8CPU &cpu)
         // chan B
         doSubChannel(control & 0xFF, channel * 2 + 1, memAddrB, ioAddrB, countB, channel ? InterruptSource::DEND1B : InterruptSource::DEND0B);
     }
+
+    return cycles;
 }
 
 uint8_t H8CPU::IOPort::read() const

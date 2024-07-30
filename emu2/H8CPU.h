@@ -175,7 +175,7 @@ protected:
         uint8_t getReg(int addr) const;
         void setReg(int addr, uint8_t val);
 
-        void transfer(H8CPU &cpu);
+        int transfer(H8CPU &cpu);
 
         const int channel;
 
