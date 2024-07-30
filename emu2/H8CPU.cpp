@@ -136,9 +136,10 @@ bool H8CPU::executeCycles(int cycles)
 
         if(!(mstpcr & MSTPCR_TPU))
         {
-            for(int i = 0; i < 6; i++)
+            auto tpuMask = tpuInterruptEnable & tpuStart;
+            for(int i = 0; tpuMask; i++, tpuMask >>= 1)
             {
-                if(tpuStart & (1 << i))
+                if(tpuMask & 1)
                     tpuChannels[i].updateForInterrupts(*this);
             }
         }
@@ -4065,8 +4066,18 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     if(addr >= 0xE80 && addr <= 0xEAB)
     {
         int chan = (addr - 0xE80) / 16 + 3;
+        int reg = addr & 0xF;
         tpuChannels[chan].update(*this);
-        tpuChannels[chan].setReg(addr & 0xF, val);
+
+        if(reg == 4) // TIER
+        {
+            if(val)
+                tpuInterruptEnable |= 1 << chan;
+            else
+                tpuInterruptEnable &= ~(1 << chan);
+        }
+
+        tpuChannels[chan].setReg(reg, val);
         return;
     }
 
@@ -4102,8 +4113,18 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     if(addr >= 0xFD0 && addr <= 0xFFB)
     {
         int chan = (addr - 0xFD0) / 16;
+        int reg = addr & 0xF;
         tpuChannels[chan].update(*this);
-        tpuChannels[chan].setReg(addr & 0xF, val);
+
+        if(reg == 4) // TIER
+        {
+            if(val)
+                tpuInterruptEnable |= 1 << chan;
+            else
+                tpuInterruptEnable &= ~(1 << chan);
+        }
+
+        tpuChannels[chan].setReg(reg, val);
         return;
     }
 

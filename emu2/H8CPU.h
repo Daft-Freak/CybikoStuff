@@ -426,6 +426,7 @@ protected:
     IOPort ioPorts[16]; // 6-8 don't exist
     TPU tpuChannels[6];
     uint8_t tpuStart; //TSTR
+    uint8_t tpuInterruptEnable = 0;
     Timer timers[2];
     Serial serialPorts[3];
 
