@@ -102,6 +102,54 @@ protected:
     }
 };
 
+static void setXtremeBatteryLevel(H8CPU &cpu, std::unique_ptr<MemoryDevice> &extRAM)
+{
+    // reasonable values for charging, maybe
+    cpu.setADCValue(1, 0x32);  // Ua1
+    cpu.setADCValue(2, 0x3B0); // Ua2
+
+    // charger status is stored three times before the filesystem
+    // filesystem uses 258 byte blocks, the first 2 are a checksum
+    // these header blocks only have 250 bytes of data instead of 256
+    // the data we want is in a 150 byte block (with a crc32) 100 bytes inside the filesystem block
+
+    // we're going to modify the header to say the battery was last full right now
+
+    uint32_t batLevel = 0x2673C0;
+    uint32_t timestamp = cybikoTime();
+    
+    for(int i = 2; i < 5; i++)
+    {
+        int blockOff = i * 258;
+        int dataOff = blockOff + 115;
+
+        extRAM->write(dataOff +  0, timestamp >> 24);
+        extRAM->write(dataOff +  1, timestamp >> 16);
+        extRAM->write(dataOff +  2, timestamp >> 8);
+        extRAM->write(dataOff +  3, timestamp);
+
+        extRAM->write(dataOff +  4, batLevel >> 24);
+        extRAM->write(dataOff +  5, batLevel >> 16);
+        extRAM->write(dataOff +  6, batLevel >> 8);
+        extRAM->write(dataOff +  7, batLevel);
+
+        extRAM->write(dataOff +  8, timestamp >> 24);
+        extRAM->write(dataOff +  9, timestamp >> 16);
+        extRAM->write(dataOff + 10, timestamp >> 8);
+        extRAM->write(dataOff + 11, timestamp);
+
+        uint32_t crc = ~crc32(extRAM->getData() + blockOff + 102, 146);
+        extRAM->write(blockOff + 248, crc >> 24);
+        extRAM->write(blockOff + 249, crc >> 16);
+        extRAM->write(blockOff + 250, crc >> 8);
+        extRAM->write(blockOff + 251, crc);
+
+        uint16_t fsCheck = fsChecksum(extRAM->getData() + blockOff + 2, 250);
+        extRAM->write(blockOff + 0, fsCheck >> 8);
+        extRAM->write(blockOff + 1, fsCheck);
+    }
+}
+
 int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
@@ -290,6 +338,10 @@ int main(int argc, char *args[])
 
 
     cpu.reset();
+
+    // set battery (needs to be after reset)
+    if(xtreme)
+        setXtremeBatteryLevel(cpu, extRAM);
 
     //rendering setup
 
