@@ -5,5 +5,6 @@
 #include <string>
 
 uint32_t cyIDFromString(const std::string &str);
+std::string cyIDToString(uint32_t id);
 
 #endif

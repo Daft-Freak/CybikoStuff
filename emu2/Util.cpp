@@ -77,3 +77,25 @@ uint32_t cyIDFromString(const std::string &str)
 
     return cyID;
 }
+
+std::string cyIDToString(uint32_t id)
+{
+    std::string ret(7, 'A');
+
+    ret[6] = id & 1 ? 'B' : 'A';
+
+    // may or may not be special
+    // CyOS does display it though
+    if(id >> 31)
+        ret[6] += 2;
+
+    uint32_t shifted = id >> 1;
+    const char *idChars = "ABCDEFGHKLMNPRSTUVWXYZQJ23456789";
+    for(int i = 5; i >= 0; i--)
+    {
+        ret[i] = idChars[shifted & 0x1F];
+        shifted >>= 5;
+    }
+
+    return ret;
+}
