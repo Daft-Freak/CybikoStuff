@@ -19,3 +19,16 @@ uint32_t crc32(uint8_t *data, int length)
 
     return crc;
 }
+
+uint16_t fsChecksum(uint8_t *data, int length)
+{
+    uint16_t ret = 0;
+
+    for(int i = 0; i < length; i++)
+    {
+        ret = ret ^ data[i] ^ i;
+        ret = ret << 1 | ret >> 15;
+    }
+
+    return ret;
+}
