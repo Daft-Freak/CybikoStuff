@@ -21,6 +21,7 @@ set(SOURCES
     RFSerial.cpp
     SerialFlash.cpp
     USBDevice.cpp
+    Util.cpp
 )
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
