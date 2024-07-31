@@ -1,3 +1,4 @@
+#include <ctime>
 #include <iostream>
 
 #include "Util.h"
@@ -98,4 +99,61 @@ std::string cyIDToString(uint32_t id)
     }
 
     return ret;
+}
+
+uint32_t cybikoTime()
+{
+    auto t = time(nullptr);
+
+    auto tm = localtime(&t);
+
+    // then convert back to a timestamp, but in "cybiko time"
+    // nobody will be using these on February 6th 2036, right?
+
+    // start with years (with not-so-accurate leap year handling)
+    int days = (tm->tm_year / 4) * 1461; /* four years */
+
+    for(int i = 0; i < tm->tm_year % 4; i++)
+    {
+        if(i == 0)
+            days += 366;
+        else
+            days += 365;
+    }
+
+    // months
+    for(int i = 0; i < tm->tm_mon; i++)
+    {
+        switch(i + 1)
+        {
+            case 1:
+            case 3:
+            case 5:
+            case 7:
+            case 8:
+            case 10:
+            case 12:
+                days += 31;
+                break;
+            case 2:
+                // still deliberately wrong
+                if(tm->tm_year % 4 == 0)
+                    days += 29;
+                else
+                    days += 28;
+                break;
+
+            case 4:
+            case 6:
+            case 9:
+            case 11:
+                days += 30;
+                break;
+        }
+    }
+
+    // and finally the day
+    days += tm->tm_mday - 1;
+
+    return ((days * 24 + tm->tm_hour) * 60 + tm->tm_min) * 60 + tm->tm_sec;
 }
