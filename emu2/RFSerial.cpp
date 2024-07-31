@@ -9,6 +9,7 @@
 #include "RFSerial.h"
 
 #include "CRC.h"
+#include "Util.h"
 
 RFSerial::RFSerial()
 {
@@ -133,7 +134,10 @@ void RFSerial::write(uint8_t val)
             int dataLen = longPkt ? 104 : 14;
             int footLen = longPkt ? 80 : 20;
 
-            printf("RFSerial packet from %08X to %08X on chan %i\n", srcAddr, dstAddr, channel);
+            auto srcAddrStr = cyIDToString(srcAddr);
+            auto dstAddrStr = cyIDToString(dstAddr);
+
+            printf("RFSerial packet from %08X(@%s) to %08X(@%s) on chan %i\n", srcAddr, srcAddrStr.c_str(), dstAddr, dstAddrStr.c_str(), channel);
             printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
             printf("\tdata:");
 
