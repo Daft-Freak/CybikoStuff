@@ -273,11 +273,13 @@ protected:
         void setReg(int addr, uint8_t val, H8CPU &cpu);
 
         void update(H8CPU &cpu);
+        void updateForInterrupts(H8CPU &cpu);
 
         void setDevice(SerialDevice *device);
 
     protected:
         void updateClockDiv();
+        void calcNextUpdate();
 
         void doTX(H8CPU &cpu);
         void doRX(H8CPU &cpu);
@@ -290,9 +292,10 @@ protected:
         SerialDevice *device = nullptr;
 
         uint32_t lastUpdateCycle = 0;
+        uint32_t nextUpdateCycle = 0;
 
         int cyclesPerChar = 1;
-        int txCycles = 0, rxCycles = 0;
+        unsigned int txCycles = 0, rxCycles = 0;
 
         int delayedInterrupts = 0;
     };

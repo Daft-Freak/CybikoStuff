@@ -150,15 +150,12 @@ bool H8CPU::executeCycles(int cycles)
             timers[1].update(*this, executed);
         }
 
-        //if(clock & 8) // slow it down a bit
-        {
-            if(!(mstpcr & MSTPCR_SCI0))
-                serialPorts[0].update(*this);
-            if(!(mstpcr & MSTPCR_SCI1))
-                serialPorts[1].update(*this);
-            if(!(mstpcr & MSTPCR_SCI2))
-                serialPorts[2].update(*this);
-        }
+        if(!(mstpcr & MSTPCR_SCI0))
+            serialPorts[0].updateForInterrupts(*this);
+        if(!(mstpcr & MSTPCR_SCI1))
+            serialPorts[1].updateForInterrupts(*this);
+        if(!(mstpcr & MSTPCR_SCI2))
+            serialPorts[2].updateForInterrupts(*this);
 
         if(!(mstpcr & MSTPCR_A2D))
             updateADC(executed);
@@ -1915,47 +1912,68 @@ void H8CPU::Serial::update(H8CPU &cpu)
 
     lastUpdateCycle = cpu.getClock();
 
-    if(txCycles)
+    while(elapsed)
     {
-        txCycles -= elapsed;
+        auto step = elapsed;
 
-        if(txCycles <= 0)
+        if(txCycles && txCycles < step)
+            step = txCycles;
+
+        if(rxCycles && rxCycles < step)
+            step = rxCycles;
+
+        elapsed -= step;
+
+        if(txCycles)
         {
-            txCycles = 0;
+            txCycles -= step;
 
-            // start next
-            if(!(status & SSR_TDRE) && (control & SCR_TE))
-                doTX(cpu);
-            else if(control & SCR_TE) // end
+            if(txCycles == 0)
             {
-                status |= SSR_TEND;
+                // start next
+                if(!(status & SSR_TDRE) && (control & SCR_TE))
+                    doTX(cpu);
+                else if(control & SCR_TE) // end
+                {
+                    status |= SSR_TEND;
 
-                if(control & SCR_TEIE)
-                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
-            }
+                    if(control & SCR_TEIE)
+                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
+                }
 
-            // keep going anyway if rx-only sync
-            if((control & SCR_RE) && !(control & SCR_TE) && (mode & SMR_CA))
-            {
-                if(device && device->canRead())
-                    doRX(cpu);
+                // keep going anyway if rx-only sync
+                if((control & SCR_RE) && !(control & SCR_TE) && (mode & SMR_CA))
+                {
+                    if(device && device->canRead())
+                        doRX(cpu);
 
-                txCycles = cyclesPerChar;
+                    txCycles = cyclesPerChar;
+                }
             }
         }
+
+        if(rxCycles)
+            rxCycles -= step;
+
+        // recv data if async
+        if(!rxCycles && (control & SCR_RE) && !(status & SSR_RDRF) && !(mode & SMR_CA) && device && device->canRead())
+            doRX(cpu);
+
+        calcNextUpdate();
     }
+}
 
-    if(rxCycles)
-    {
-        rxCycles -= elapsed;
+void H8CPU::Serial::updateForInterrupts(H8CPU &cpu)
+{
+    if(!(control & (SCR_TEIE | SCR_MPIE | SCR_RIE | SCR_TIE)))
+        return;
 
-        if(rxCycles <= 0)
-            rxCycles = 0;
-    }
+    auto elapsed = cpu.getClock() - lastUpdateCycle;
+    auto toNext = nextUpdateCycle - lastUpdateCycle;
 
-    // recv data if async
-    if(!rxCycles && (control & SCR_RE) && !(status & SSR_RDRF) && !(mode & SMR_CA) && device && device->canRead())
-        doRX(cpu);
+    // techincally should update if async read, but the only thing that can trigger read to be ready os writing
+    if(elapsed >= toNext)// || (!(mode & SMR_CA) && device && device->canRead()))
+        update(cpu);
 }
 
 void H8CPU::Serial::setDevice(SerialDevice *device)
@@ -1990,6 +2008,35 @@ void H8CPU::Serial::updateClockDiv()
     clocksPerBit *= clockDiv[mode & 3] * (bitRate + 1) * 4;
 
     cyclesPerChar = clocksPerBit * bits;
+
+    calcNextUpdate();
+}
+
+void H8CPU::Serial::calcNextUpdate()
+{
+    // force update if delayed interrupt
+    if(delayedInterrupts)
+    {
+        nextUpdateCycle = lastUpdateCycle;
+        return;
+    }
+
+    // also force if async read ready
+    if(!rxCycles && (!(mode & SMR_CA) && device && device->canRead()))
+    {
+        nextUpdateCycle = lastUpdateCycle;
+        return;
+    }
+
+    unsigned int nextUpdate = cyclesPerChar; // fallback to something
+
+    if(txCycles && txCycles < nextUpdate)
+        nextUpdate = txCycles;
+
+    if(rxCycles && rxCycles < nextUpdate)
+        nextUpdate = rxCycles;
+
+    nextUpdateCycle = lastUpdateCycle + nextUpdate;
 }
 
 void H8CPU::Serial::doTX(H8CPU &cpu)
@@ -2006,6 +2053,7 @@ void H8CPU::Serial::doTX(H8CPU &cpu)
         delayedInterrupts |= 1;
 
     txCycles = cyclesPerChar;
+    calcNextUpdate();
 
     // if sync we also need to RX
     if((mode & SMR_CA) && (control & SCR_RE))
@@ -2041,6 +2089,8 @@ void H8CPU::Serial::doRX(H8CPU &cpu)
         // if not sync start the clock for the next char
         if(!(mode & SMR_CA))
             rxCycles = cyclesPerChar;
+
+        calcNextUpdate();
     }
 }
 
@@ -4090,6 +4140,7 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
         case 0xF7C: // SSR0
         case 0xF7D: // RDR0
         case 0xF7E: // SCMR0
+            serialPorts[0].update(*this);
             return serialPorts[0].getReg(addr & 0x7);
 
         case 0xF80: // SMR1
@@ -4099,6 +4150,7 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
         case 0xF84: // SSR1
         case 0xF85: // RDR1
         case 0xF86: // SCMR1
+            serialPorts[1].update(*this);
             return serialPorts[1].getReg(addr & 0x7);
 
         case 0xF88: // SMR2
@@ -4108,6 +4160,7 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
         case 0xF8C: // SSR2
         case 0xF8D: // RDR2
         case 0xF8E: // SCMR2
+            serialPorts[2].update(*this);
             return serialPorts[2].getReg(addr & 0x7);
 
         case 0xF90: // ADDRAH
@@ -4284,6 +4337,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF7C: // SSR0
         case 0xF7D: // RDR0
         case 0xF7E: // SCMR0
+            serialPorts[0].update(*this);
             serialPorts[0].setReg(addr & 0x7, val, *this);
             break;
 
@@ -4294,6 +4348,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF84: // SSR1
         case 0xF85: // RDR1
         case 0xF86: // SCMR1
+            serialPorts[1].update(*this);
             serialPorts[1].setReg(addr & 0x7, val, *this);
             break;
 
@@ -4304,6 +4359,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF8C: // SSR2
         case 0xF8D: // RDR2
         case 0xF8E: // SCMR2
+            serialPorts[2].update(*this);
             serialPorts[2].setReg(addr & 0x7, val, *this);
             break;
 
