@@ -250,7 +250,8 @@ protected:
         uint8_t getReg(int addr) const;
         void setReg(int addr, uint8_t val);
 
-        void update(H8CPU &cpu, int clocks);
+        void update(H8CPU &cpu);
+        void updateForInterrupts(H8CPU &cpu);
 
     protected:
         const int index;
@@ -259,6 +260,8 @@ protected:
         uint8_t controlStatus = 0;
         uint8_t constantA = 0, constantB = 0;
         uint8_t counter = 0;
+
+        uint32_t lastUpdateCycle = 0;
 
         int clockDiv = 0;
         int frac = 0;

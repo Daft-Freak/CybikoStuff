@@ -146,8 +146,8 @@ bool H8CPU::executeCycles(int cycles)
 
         if(!(mstpcr & MSTPCR_Timer8b))
         {
-            timers[0].update(*this, executed);
-            timers[1].update(*this, executed);
+            timers[0].updateForInterrupts(*this);
+            timers[1].updateForInterrupts(*this);
         }
 
         if(!(mstpcr & MSTPCR_SCI0))
@@ -1782,12 +1782,18 @@ void H8CPU::Timer::setReg(int reg, uint8_t val)
     std::cout << "Timer" << index << " reg " << reg << " = " << std::hex << static_cast<int>(val) << "\n" << std::dec;
 }
 
-void H8CPU::Timer::update(H8CPU &cpu, int clocks)
+void H8CPU::Timer::update(H8CPU &cpu)
 {
     if(!clockDiv)
+    {
+        lastUpdateCycle = cpu.getClock();
         return;
+    }
 
     // TODO: control bits 3-7
+
+    auto clocks = cpu.getClock() - lastUpdateCycle;
+    lastUpdateCycle = cpu.getClock();
 
     frac += clocks;
 
@@ -1809,6 +1815,13 @@ void H8CPU::Timer::update(H8CPU &cpu, int clocks)
 
     // TODO: compare match
     // TODO: p26 output (OS0-4)
+}
+
+void H8CPU::Timer::updateForInterrupts(H8CPU &cpu)
+{
+    int elapsed = cpu.getClock() - lastUpdateCycle;
+    if(elapsed >= (clockDiv - frac))
+        update(cpu);
 }
 
 uint8_t H8CPU::Serial::getReg(int addr) const
@@ -4082,7 +4095,10 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
 
     // Timer 0/1
     if(addr >= 0xFB0 && addr <= 0xFB9)
+    {
+        timers[addr & 1].update(*this);
         return timers[addr & 1].getReg((addr - 0xFB0) / 2);
+    }
 
     // PORTx
     if((addr & 0xFF0) == 0xF50)
@@ -4227,6 +4243,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // Timer 0/1
     if(addr >= 0xFB0 && addr <= 0xFB9)
     {
+        timers[addr & 1].update(*this);
         timers[addr & 1].setReg((addr - 0xFB0) / 2, val);
         return;
     }
