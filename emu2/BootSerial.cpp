@@ -7,6 +7,8 @@
 
 uint8_t SDCard::read()
 {
+    didWrite = false;
+
     if(readQueue.empty())
         return 0xFF;
 
@@ -31,8 +33,6 @@ void SDCard::write(uint8_t val)
             for(int i = 1; i < 6; i++)
                 std::cout << " " << static_cast<int>(cmd[i]);
             std::cout << "\n" << std::dec;
-
-            readQueue.push_back(0xFF); // data sent while reading the last byte
 
             if(status & Status_AppCmd)
             {
@@ -179,9 +179,7 @@ void SDCard::write(uint8_t val)
 bool SDCard::canRead()
 {
     // TODO: CS
-    bool ret = didWrite;
-    didWrite = false;
-    return ret;
+    return didWrite;
 }
 
 void SDCard::setFile(std::string filename)
