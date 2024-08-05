@@ -1876,88 +1876,142 @@ void H8CPU::Serial::update(H8CPU &cpu)
 {
     // does not handle baud rates...
 
-    bool didTX = false;
-
-    // send
-    if(control & SCR_TE)
+    if(mode & SMR_CA)
     {
-        if(forceTXI)
+        // sync
+        bool didTX = false;
+
+        // send
+        if(control & SCR_TE)
         {
-            // generate a TXI interrupt on enable
-            // otherwise the DMAC won't get triggered
-            cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-            forceTXI = false;
-        }
-        else if(status & SSR_TDRE)
-        {
-            if(!(status & SSR_TEND))
+            if(forceTXI)
             {
-                status |= SSR_TEND;
-
-                if(control & SCR_TEIE)
-                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
+                // generate a TXI interrupt on enable
+                // otherwise the DMAC won't get triggered
+                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+                forceTXI = false;
             }
+            else if(status & SSR_TDRE)
+            {
+                if(!(status & SSR_TEND))
+                {
+                    status |= SSR_TEND;
 
-            // can't rx if we didn't tx (unless tx is disabled)
-            if(mode & SMR_CA)
+                    if(control & SCR_TEIE)
+                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
+                }
+
+                // can't rx if we didn't tx (unless tx is disabled)
                 return;
 
-        }
-        else
-        {
-            if(!device)
-                std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
+            }
             else
-                device->write(txData);
-
-            status |= SSR_TDRE;
-
-            if(control & SCR_TIE)
-                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-
-            // if sync also read
-            didTX = true;
-        }
-    }
-
-    // recv
-    if(control & SCR_RE)
-    {
-        // in sync mode we have to receive when sending
-        bool forceRecv = (mode & SMR_CA) && didTX;
-
-        if(status & SSR_RDRF)
-        {
-            // sync overrun
-            // TODO: ERI interrupt
-            if(forceRecv)
-                status |= SSR_ORER;
-        }
-        else
-        {
-            // get data
-            bool gotData = false;
-
-            if(device)
             {
-                // handle sync rx with tx disabled (probably sends some junk?)
-                if(!(control & SCR_TE) && (mode & SMR_CA))
-                    device->write(0xFF); // ?
+                if(!device)
+                    std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
+                else
+                    device->write(txData);
 
-                if(device->canRead())
+                status |= SSR_TDRE;
+
+                if(control & SCR_TIE)
+                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+
+                // if sync also read
+                didTX = true;
+            }
+        }
+
+        // recv
+        if(control & SCR_RE)
+        {
+            if(status & SSR_RDRF)
+            {
+                // sync overrun
+                // TODO: ERI interrupt
+                if(didTX)
+                    status |= SSR_ORER;
+            }
+            else
+            {
+                // get data
+                bool gotData = false;
+
+                if(device)
                 {
-                    rxData = device->read();
-                    gotData = true;
+                    // handle sync rx with tx disabled (probably sends some junk?)
+                    if(!(control & SCR_TE))
+                        device->write(0xFF); // ?
+
+                    if(device->canRead())
+                    {
+                        rxData = device->read();
+                        gotData = true;
+                    }
+                }
+
+                // set flag if we got something
+                // or if we sent something, as we can't not recv when sending
+                if(gotData || didTX)
+                {
+                    status |= SSR_RDRF;
+                    if((control & SCR_RIE))
+                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
                 }
             }
-
-            // set flag if we got something
-            // or if in sync mode, as we can't not recv when sending
-            if(gotData || forceRecv)
+        }
+    }
+    else
+    {
+        // send
+        if(control & SCR_TE)
+        {
+            if(forceTXI)
             {
-                status |= SSR_RDRF;
-                if((control & SCR_RIE))
-                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
+                // generate a TXI interrupt on enable
+                // otherwise the DMAC won't get triggered
+                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+                forceTXI = false;
+            }
+            else if(status & SSR_TDRE)
+            {
+                if(!(status & SSR_TEND))
+                {
+                    status |= SSR_TEND;
+
+                    if(control & SCR_TEIE)
+                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
+                }
+            }
+            else
+            {
+                if(!device)
+                    std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
+                else
+                    device->write(txData);
+
+                status |= SSR_TDRE;
+
+                if(control & SCR_TIE)
+                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+            }
+        }
+
+        // recv
+        if(control & SCR_RE)
+        {
+            if(!(status & SSR_RDRF))
+            {
+                // get data
+                if(device && device->canRead())
+                {
+                    rxData = device->read();
+
+                    // set flag if we got something
+                    status |= SSR_RDRF;
+                    if((control & SCR_RIE))
+                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
+                }
             }
         }
     }
