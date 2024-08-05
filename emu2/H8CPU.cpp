@@ -1395,20 +1395,20 @@ int H8CPU::DMAChannel::transfer(H8CPU &cpu)
     return cycles;
 }
 
-uint8_t H8CPU::IOPort::read() const
+uint8_t H8CPU::IOPort::read(uint32_t time) const
 {
     uint8_t ret = 0;
 
     for(auto &dev : devices)
-        ret |= dev->read();
+        ret |= dev->read(time);
 
     return ret;
 }
 
-void H8CPU::IOPort::write(uint8_t val)
+void H8CPU::IOPort::write(uint8_t val, uint32_t time)
 {
     for(auto &dev : devices)
-        dev->write(val);
+        dev->write(val, time);
 
     data = val;
 }
@@ -1418,10 +1418,10 @@ uint8_t H8CPU::IOPort::getWrittenData() const
     return data;
 }
 
-void H8CPU::IOPort::setDirection(uint8_t dir)
+void H8CPU::IOPort::setDirection(uint8_t dir, uint32_t time)
 {
     for(auto &dev : devices)
-        dev->setDirection(dir);
+        dev->setDirection(dir, time);
 
     direction = dir;
 }
@@ -4104,7 +4104,7 @@ uint8_t H8CPU::readIOReg(uint32_t addr)
     if((addr & 0xFF0) == 0xF50)
     {
         //std::cout << "port read (reg " << std::hex << addr << ") at ~" << pc << std::dec << "\n";
-        return ioPorts[addr & 0xF].read();
+        return ioPorts[addr & 0xF].read(clock);
     }
 
     // PxDR
@@ -4236,7 +4236,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // PxDDR
     if((addr & 0xFF0) == 0xEB0)
     {
-        ioPorts[addr & 0xF].setDirection(val);
+        ioPorts[addr & 0xF].setDirection(val, clock);
         return;
     }
 
@@ -4251,7 +4251,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // PxDR
     if((addr & 0xFF0) == 0xF60)
     {
-        ioPorts[addr & 0xF].write(val);
+        ioPorts[addr & 0xF].write(val, clock);
         return;
     }
 

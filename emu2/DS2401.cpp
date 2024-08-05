@@ -4,7 +4,7 @@
 
 DS2401::DS2401(H8CPU &cpu) : cpu(cpu){}
 
-uint8_t DS2401::read()
+uint8_t DS2401::read(uint32_t time)
 {
     if(state == 3 && sendBit != -1)
         return (romData & (1ULL << sendBit)) ? (1 << bit) : 0;
@@ -12,32 +12,31 @@ uint8_t DS2401::read()
     return state == 1 ? 0 : (1 << bit);
 }
 
-void DS2401::write(uint8_t val)
+void DS2401::write(uint8_t val, uint32_t time)
 {
     pinVal = val & (1 << bit);
-    update();
+    update(time);
 }
 
-void DS2401::setDirection(uint8_t dir)
+void DS2401::setDirection(uint8_t dir, uint32_t time)
 {
     out = dir & (1 << bit);
 
-    update();
+    update(time);
 }
 
-void DS2401::update()
+void DS2401::update(uint32_t time)
 {
     // external pull-up, setting to input causes a high
     bool val = !out || pinVal;
 
     if(lastStateTime == 0)
-        lastStateTime = cpu.getClock();
+        lastStateTime = time;
 
     if(val != prevState)
     {
-        auto now = cpu.getClock();
         // ~18.432
-        auto len = (now - lastStateTime) / 18;
+        auto len = (time - lastStateTime) / 18;
 
         if(val == 1)
         {
@@ -77,7 +76,7 @@ void DS2401::update()
                 sendBit++;
         }
 
-        lastStateTime = now;
+        lastStateTime = time;
     }
 
     prevState = val;

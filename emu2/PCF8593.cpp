@@ -11,7 +11,7 @@ void PCF8593::updateTime()
     localTime = *localtime(&tv.tv_sec);
 }
 
-uint8_t PCF8593::read()
+uint8_t PCF8593::read(uint32_t time)
 {
     // sda has a pull-up, scl does not
     if(ack)
@@ -25,14 +25,14 @@ uint8_t PCF8593::read()
     return 1 << sdaBit;
 }
 
-void PCF8593::write(uint8_t val)
+void PCF8593::write(uint8_t val, uint32_t time)
 {
     sdaState = val & (1 << sdaBit); //?
     sclState = val & (1 << sclBit);
     update();
 }
 
-void PCF8593::setDirection(uint8_t dir)
+void PCF8593::setDirection(uint8_t dir, uint32_t time)
 {
     sdaOut = dir & (1 << sdaBit);
     update();

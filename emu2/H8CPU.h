@@ -120,9 +120,9 @@ class IODevice
 public:
     virtual ~IODevice() = default;
 
-    virtual uint8_t read() = 0;
-    virtual void write(uint8_t val) = 0;
-    virtual void setDirection(uint8_t dir) = 0;
+    virtual uint8_t read(uint32_t time) = 0;
+    virtual void write(uint8_t val, uint32_t time) = 0;
+    virtual void setDirection(uint8_t dir, uint32_t time) = 0;
 };
 
 class SerialDevice
@@ -192,11 +192,11 @@ protected:
     public:
         IOPort(int index) : index(index) {}
 
-        uint8_t read() const;
-        void write(uint8_t val);
+        uint8_t read(uint32_t time) const;
+        void write(uint8_t val, uint32_t time);
         uint8_t getWrittenData() const;
 
-        void setDirection(uint8_t dir);
+        void setDirection(uint8_t dir, uint32_t time);
         uint8_t getDirection() const;
 
         void addDevice(IODevice *device);

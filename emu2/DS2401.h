@@ -11,11 +11,11 @@ public:
     DS2401(H8CPU &cpu);
 
 protected:
-    uint8_t read() override;
-    void write(uint8_t val) override;
-    void setDirection(uint8_t dir) override;
+    uint8_t read(uint32_t time) override;
+    void write(uint8_t val, uint32_t time) override;
+    void setDirection(uint8_t dir, uint32_t time) override;
 
-    void update();
+    void update(uint32_t time);
 
     void handleByte();
 

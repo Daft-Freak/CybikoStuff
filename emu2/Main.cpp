@@ -24,19 +24,19 @@
 class PortA : public IODevice
 {
 protected:
-    uint8_t read() override
+    uint8_t read(uint32_t time) override
     {
         // red led high (| 0x40) is on charge
         // On/Off high (pullup)
         return 0x80 | 0x40;
     }
 
-    void write(uint8_t val) override
+    void write(uint8_t val, uint32_t time) override
     {
 
     }
 
-    void setDirection(uint8_t dir) override
+    void setDirection(uint8_t dir, uint32_t time) override
     {
 
     }
@@ -45,17 +45,17 @@ protected:
 class Port1Classic final : public IODevice
 {
 public:
-    uint8_t read() override
+    uint8_t read(uint32_t time) override
     {
         // otherwise it immediately goes into standby mode
         return 1 << 3;
     }
 
-    void write(uint8_t val) override
+    void write(uint8_t val, uint32_t time) override
     {
     }
 
-    void setDirection(uint8_t dir) override
+    void setDirection(uint8_t dir, uint32_t time) override
     {
     }
 };
@@ -66,17 +66,17 @@ class Port3Classic final : public IODevice
 public:
     Port3Classic(SerialFlash &flash) : flash(flash) {}
 
-    uint8_t read() override
+    uint8_t read(uint32_t time) override
     {
         return 0x00;
     }
 
-    void write(uint8_t val) override
+    void write(uint8_t val, uint32_t time) override
     {
         flash.setCS(val & 0x10);
     }
 
-    void setDirection(uint8_t dir) override
+    void setDirection(uint8_t dir, uint32_t time) override
     {
     }
 
@@ -87,17 +87,17 @@ private:
 class PortFClassic final : public IODevice
 {
 protected:
-    uint8_t read() override
+    uint8_t read(uint32_t time) override
     {
         // flash R/B
         return 0x04;
     }
 
-    void write(uint8_t val) override
+    void write(uint8_t val, uint32_t time) override
     {
     }
 
-    void setDirection(uint8_t dir) override
+    void setDirection(uint8_t dir, uint32_t time) override
     {
     }
 };
