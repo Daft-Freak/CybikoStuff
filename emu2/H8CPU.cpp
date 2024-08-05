@@ -1876,6 +1876,14 @@ void H8CPU::Serial::update(H8CPU &cpu)
 {
     // does not handle baud rates...
 
+    if(forceTXI)
+    {
+        // generate a TXI interrupt on enable
+        // otherwise the DMAC won't get triggered
+        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+        forceTXI = false;
+    }
+
     if(mode & SMR_CA)
     {
         // sync
@@ -1884,14 +1892,7 @@ void H8CPU::Serial::update(H8CPU &cpu)
         // send
         if(control & SCR_TE)
         {
-            if(forceTXI)
-            {
-                // generate a TXI interrupt on enable
-                // otherwise the DMAC won't get triggered
-                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-                forceTXI = false;
-            }
-            else if(status & SSR_TDRE)
+            if(status & SSR_TDRE)
             {
                 if(!(status & SSR_TEND))
                 {
@@ -1966,14 +1967,7 @@ void H8CPU::Serial::update(H8CPU &cpu)
         // send
         if(control & SCR_TE)
         {
-            if(forceTXI)
-            {
-                // generate a TXI interrupt on enable
-                // otherwise the DMAC won't get triggered
-                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-                forceTXI = false;
-            }
-            else if(status & SSR_TDRE)
+            if(status & SSR_TDRE)
             {
                 if(!(status & SSR_TEND))
                 {
