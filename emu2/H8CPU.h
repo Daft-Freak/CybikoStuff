@@ -270,7 +270,7 @@ protected:
         Serial(int index) : index(index) {}
 
         uint8_t getReg(int addr) const;
-        void setReg(int addr, uint8_t val);
+        void setReg(int addr, uint8_t val, H8CPU &cpu);
 
         void update(H8CPU &cpu);
 

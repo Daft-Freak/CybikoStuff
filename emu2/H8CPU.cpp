@@ -1381,11 +1381,11 @@ int H8CPU::DMAChannel::transfer(H8CPU &cpu)
             // if this was a write to a tx reg from a tx interrupt, we need to clear TDRE
             // TODO: 0
             if(dstAddr == 0xffff83/*TDR1*/ && (chanControl & 0xF) == 6)
-                cpu.serialPorts[1].setReg(4/*status*/, cpu.serialPorts[1].getReg(4) & ~SSR_TDRE);
+                cpu.serialPorts[1].setReg(4/*status*/, cpu.serialPorts[1].getReg(4) & ~SSR_TDRE, cpu);
 
             // same for rx
             if(srcAddr == 0xffff85/*RDR1*/ && (chanControl & 0xF) == 7)
-                cpu.serialPorts[1].setReg(4/*status*/, cpu.serialPorts[1].getReg(4) & ~SSR_RDRF);
+                cpu.serialPorts[1].setReg(4/*status*/, cpu.serialPorts[1].getReg(4) & ~SSR_RDRF, cpu);
         };
 
         // chan A
@@ -1837,7 +1837,7 @@ uint8_t H8CPU::Serial::getReg(int addr) const
     return 0;
 }
 
-void H8CPU::Serial::setReg(int addr, uint8_t val)
+void H8CPU::Serial::setReg(int addr, uint8_t val, H8CPU &cpu)
 {
     switch(addr)
     {
@@ -2264,18 +2264,18 @@ bool H8CPU::updateDTC()
 
     // SCI flag clearing...
     if(dstAddr == 0xFFFF7B/*TDR0*/)
-        serialPorts[0].setReg(4/*status*/, serialPorts[0].getReg(4) & ~SSR_TDRE);
+        serialPorts[0].setReg(4/*status*/, serialPorts[0].getReg(4) & ~SSR_TDRE, *this);
     else if(dstAddr == 0xFFFF83/*TDR1*/)
-        serialPorts[1].setReg(4/*status*/, serialPorts[1].getReg(4) & ~SSR_TDRE);
+        serialPorts[1].setReg(4/*status*/, serialPorts[1].getReg(4) & ~SSR_TDRE, *this);
     else if(dstAddr == 0xFFFF8B/*TDR2*/)
-        serialPorts[2].setReg(4/*status*/, serialPorts[2].getReg(4) & ~SSR_TDRE);
+        serialPorts[2].setReg(4/*status*/, serialPorts[2].getReg(4) & ~SSR_TDRE, *this);
 
     if(srcAddr == 0xFFFF7D/*RDR0*/)
-        serialPorts[0].setReg(4/*status*/, serialPorts[0].getReg(4) & ~SSR_RDRF);
+        serialPorts[0].setReg(4/*status*/, serialPorts[0].getReg(4) & ~SSR_RDRF, *this);
     else if(srcAddr == 0xFFFF85/*RDR1*/)
-        serialPorts[1].setReg(4/*status*/, serialPorts[1].getReg(4) & ~SSR_RDRF);
+        serialPorts[1].setReg(4/*status*/, serialPorts[1].getReg(4) & ~SSR_RDRF, *this);
     else if(srcAddr == 0xFFFF8D/*RDR2*/)
-        serialPorts[2].setReg(4/*status*/, serialPorts[2].getReg(4) & ~SSR_RDRF);
+        serialPorts[2].setReg(4/*status*/, serialPorts[2].getReg(4) & ~SSR_RDRF, *this);
 
     // a/d flag clear
     // ?
@@ -4256,7 +4256,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF7C: // SSR0
         case 0xF7D: // RDR0
         case 0xF7E: // SCMR0
-            serialPorts[0].setReg(addr & 0x7, val);
+            serialPorts[0].setReg(addr & 0x7, val, *this);
             break;
 
         case 0xF80: // SMR1
@@ -4266,7 +4266,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF84: // SSR1
         case 0xF85: // RDR1
         case 0xF86: // SCMR1
-            serialPorts[1].setReg(addr & 0x7, val);
+            serialPorts[1].setReg(addr & 0x7, val, *this);
             break;
 
         case 0xF88: // SMR2
@@ -4276,7 +4276,7 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
         case 0xF8C: // SSR2
         case 0xF8D: // RDR2
         case 0xF8E: // SCMR2
-            serialPorts[2].setReg(addr & 0x7, val);
+            serialPorts[2].setReg(addr & 0x7, val, *this);
             break;
 
         case 0xF98: // ADCSR
