@@ -175,6 +175,7 @@ int main(int argc, char *args[])
     std::string serialBootFile;
     std::string cyIDStr = "FAKECYB";
     bool usbip = false;
+    bool mp3SD = false;
 
     bool benchmarkMode = false;
     int64_t benchmarkCycles = 0;
@@ -203,6 +204,8 @@ int main(int argc, char *args[])
             xtreme = false;
         else if(arg == "--usbip")
             usbip = true;
+        else if(arg == "--mp3-sd")
+            mp3SD = true; // this is only the SD-card part of the MP3 player
     }
 
     // CPU init
@@ -215,7 +218,7 @@ int main(int argc, char *args[])
 
     std::unique_ptr<PCF8593> rtc;
 
-    std::unique_ptr<SerialDevice> bootSerial;
+    std::unique_ptr<BootSerial> bootSerial;
     auto rfSerial = std::make_unique<RFSerial>(); //cpu?
     
     // xtreme
@@ -341,7 +344,15 @@ int main(int argc, char *args[])
 
     // set battery (needs to be after reset)
     if(xtreme)
+    {
         setXtremeBatteryLevel(cpu, extRAM);
+
+        if(mp3SD)
+        {
+            cpu.setADCValue(3, 0);
+            bootSerial->getSD().setFile(deviceDataPath + "sdcard.bin");
+        }
+    }
 
     //rendering setup
 
