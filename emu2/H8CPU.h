@@ -277,6 +277,11 @@ protected:
         void setDevice(SerialDevice *device);
 
     protected:
+        void updateClockDiv();
+
+        void doTX(H8CPU &cpu);
+        void doRX(H8CPU &cpu);
+
         const int index;
         uint8_t mode = 0, bitRate = 0, control = 0, status = 0x84, smartCardMode = 0;
 
@@ -284,7 +289,12 @@ protected:
 
         SerialDevice *device = nullptr;
 
-        bool forceTXI = false;
+        uint32_t lastUpdateCycle = 0;
+
+        int cyclesPerChar = 1;
+        int txCycles = 0, rxCycles = 0;
+
+        int delayedInterrupts = 0;
     };
 
     void serviceInterrupt();

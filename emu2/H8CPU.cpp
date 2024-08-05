@@ -1841,27 +1841,54 @@ void H8CPU::Serial::setReg(int addr, uint8_t val, H8CPU &cpu)
 {
     switch(addr)
     {
-        case 0:
+        case 0: // SMR
             mode = val;
+            updateClockDiv();
             break;
-        case 1:
+        case 1: // BRR
             bitRate = val;
+            updateClockDiv();
             break;
-        case 2:
+        case 2: // SCR
+        {
+            auto changed = val ^ control;
+            if((changed & val & SCR_TIE) && (val & SCR_TE) && (status & SSR_TDRE))
+            {
+                // generate a TXI interrupt on enable
+                // otherwise the DMAC won't get triggered
+                cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+            }
 
-            if(!(control & SCR_TIE) && (val & SCR_TIE) && (val & SCR_TE) && (status & SSR_TDRE))
-                forceTXI = true;
+            if((changed & val & SCR_RE) && !(val & SCR_TE) && (mode & SMR_CA) && !txCycles)
+            {
+                // for rx-only sync mode keep the tx clock coing
+                txCycles = cyclesPerChar;
+            }
 
             control = val;
             break;
+        }
         case 3: // TDR
             txData = val;
             break;
-        case 4:
+        case 4: // SSR
+        {
+            auto changed = val ^ status;
+            auto cleared = changed & status;
+
             // top 5 bits can only be cleared, next 2 are read-only
-            //status = ((val & status) & 0xF8) | (status & 0x6) | (val & 1);
-            status = val;
+            status = ((val & status) & 0xF8) | (status & 0x6) | (val & 1);
+
+            if((cleared & SSR_TDRE) && (control & SCR_TE))
+            {
+                status &= ~SSR_TEND; // clear end
+
+                if(!txCycles)
+                    doTX(cpu);
+            }
+
             break;
+        }
         //case 5: // RDR - read only
         case 6:
             smartCardMode = val;
@@ -1874,146 +1901,147 @@ void H8CPU::Serial::setReg(int addr, uint8_t val, H8CPU &cpu)
 
 void H8CPU::Serial::update(H8CPU &cpu)
 {
-    // does not handle baud rates...
-
-    if(forceTXI)
+    if(delayedInterrupts)
     {
-        // generate a TXI interrupt on enable
-        // otherwise the DMAC won't get triggered
-        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-        forceTXI = false;
+        // raise interrupts we couldn't earlier
+        if(delayedInterrupts & 1)
+            cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
+        if(delayedInterrupts & 2)
+            cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
+        delayedInterrupts = 0;
     }
 
-    if(mode & SMR_CA)
+    auto elapsed = cpu.getClock() - lastUpdateCycle;
+
+    lastUpdateCycle = cpu.getClock();
+
+    if(txCycles)
     {
-        // sync
-        bool didTX = false;
+        txCycles -= elapsed;
 
-        // send
-        if(control & SCR_TE)
+        if(txCycles <= 0)
         {
-            if(status & SSR_TDRE)
+            txCycles = 0;
+
+            // start next
+            if(!(status & SSR_TDRE) && (control & SCR_TE))
+                doTX(cpu);
+            else if(control & SCR_TE) // end
             {
-                if(!(status & SSR_TEND))
-                {
-                    status |= SSR_TEND;
+                status |= SSR_TEND;
 
-                    if(control & SCR_TEIE)
-                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
-                }
-
-                // can't rx if we didn't tx (unless tx is disabled)
-                return;
-
+                if(control & SCR_TEIE)
+                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
             }
-            else
+
+            // keep going anyway if rx-only sync
+            if((control & SCR_RE) && !(control & SCR_TE) && (mode & SMR_CA))
             {
-                if(!device)
-                    std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
-                else
-                    device->write(txData);
-
-                status |= SSR_TDRE;
-
-                if(control & SCR_TIE)
-                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-
-                // if sync also read
-                didTX = true;
-            }
-        }
-
-        // recv
-        if(control & SCR_RE)
-        {
-            if(status & SSR_RDRF)
-            {
-                // sync overrun
-                // TODO: ERI interrupt
-                if(didTX)
-                    status |= SSR_ORER;
-            }
-            else
-            {
-                // get data
-                bool gotData = false;
-
-                if(device)
-                {
-                    // handle sync rx with tx disabled (probably sends some junk?)
-                    if(!(control & SCR_TE))
-                        device->write(0xFF); // ?
-
-                    if(device->canRead())
-                    {
-                        rxData = device->read();
-                        gotData = true;
-                    }
-                }
-
-                // set flag if we got something
-                // or if we sent something, as we can't not recv when sending
-                if(gotData || didTX)
-                {
-                    status |= SSR_RDRF;
-                    if((control & SCR_RIE))
-                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
-                }
-            }
-        }
-    }
-    else
-    {
-        // send
-        if(control & SCR_TE)
-        {
-            if(status & SSR_TDRE)
-            {
-                if(!(status & SSR_TEND))
-                {
-                    status |= SSR_TEND;
-
-                    if(control & SCR_TEIE)
-                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TEI0) + index * 4));
-                }
-            }
-            else
-            {
-                if(!device)
-                    std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
-                else
-                    device->write(txData);
-
-                status |= SSR_TDRE;
-
-                if(control & SCR_TIE)
-                    cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::TXI0) + index * 4));
-            }
-        }
-
-        // recv
-        if(control & SCR_RE)
-        {
-            if(!(status & SSR_RDRF))
-            {
-                // get data
                 if(device && device->canRead())
-                {
-                    rxData = device->read();
+                    doRX(cpu);
 
-                    // set flag if we got something
-                    status |= SSR_RDRF;
-                    if((control & SCR_RIE))
-                        cpu.interrupt(static_cast<InterruptSource>(static_cast<int>(InterruptSource::RXI0) + index * 4));
-                }
+                txCycles = cyclesPerChar;
             }
         }
     }
+
+    if(rxCycles)
+    {
+        rxCycles -= elapsed;
+
+        if(rxCycles <= 0)
+            rxCycles = 0;
+    }
+
+    // recv data if async
+    if(!rxCycles && (control & SCR_RE) && !(status & SSR_RDRF) && !(mode & SMR_CA) && device && device->canRead())
+        doRX(cpu);
 }
 
 void H8CPU::Serial::setDevice(SerialDevice *device)
 {
     this->device = device;
+}
+
+void H8CPU::Serial::updateClockDiv()
+{
+    int clockDiv[4]{1, 4, 16, 64};
+    int bits = 8;
+    int clocksPerBit = 1;
+
+    if(!(mode & SMR_CA)) // async
+    {
+        bits += 2; // start/stop
+
+        if(mode & SMR_STOP)
+            bits++; // second stop
+
+        if(mode & SMR_PE)
+            bits++; // parity
+        else if(mode & SMR_MP)
+            bits++; // multiprocessor, can't be used with parity
+
+        if(mode & SMR_CHR)
+            bits--; // 7-bit char
+
+        clocksPerBit *= 8;
+    }
+
+    clocksPerBit *= clockDiv[mode & 3] * (bitRate + 1) * 4;
+
+    cyclesPerChar = clocksPerBit * bits;
+}
+
+void H8CPU::Serial::doTX(H8CPU &cpu)
+{
+    if(!device)
+        std::cout << "SCI" << index << " write " << std::hex << static_cast<int>(txData) << " cr " << static_cast<int>(control) << " sr " << static_cast<int>(status) << std::dec << "\n";
+    else
+        device->write(txData);
+
+    status |= SSR_TDRE;
+
+    // we can't raise the interrupt here as we might be being called from DMA
+    if(control & SCR_TIE)
+        delayedInterrupts |= 1;
+
+    txCycles = cyclesPerChar;
+
+    // if sync we also need to RX
+    if((mode & SMR_CA) && (control & SCR_RE))
+        doRX(cpu);
+}
+
+void H8CPU::Serial::doRX(H8CPU &cpu)
+{
+    if(status & SSR_RDRF)
+    {
+        // sync overrun
+        // TODO: ERI interrupt
+        status |= SSR_ORER;
+    }
+    else
+    {
+        // get data
+        if(device)
+        {
+            // handle sync rx with tx disabled (probably sends some junk?)
+            if((mode & SMR_CA) && !(control & SCR_TE))
+                device->write(0xFF); // ?
+
+            if(device->canRead())
+                rxData = device->read();
+        }
+
+        // always set the flag, we only get here if we need to recv now
+        status |= SSR_RDRF;
+        if(control & SCR_RIE)
+            delayedInterrupts |= 2;
+
+        // if not sync start the clock for the next char
+        if(!(mode & SMR_CA))
+            rxCycles = cyclesPerChar;
+    }
 }
 
 void H8CPU::serviceInterrupt()
