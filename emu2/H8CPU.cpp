@@ -1558,7 +1558,7 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
         case 11: //TGRB L
         case 13: //TGRC L
         case 15: //TGRD L
-            general[(reg >> 1) & 3] = (val << 8) | (general[(reg >> 1) & 3] & 0xFF);
+            general[(reg >> 1) & 3] = val | (general[(reg >> 1) & 3] & 0xFF00);
             calcNextUpdate();
             break;
 
