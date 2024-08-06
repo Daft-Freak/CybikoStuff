@@ -1577,19 +1577,15 @@ void H8CPU::TPU::update(H8CPU &cpu)
     }
 
     int elapsed = cpu.getClock() - lastUpdateCycle;
-    lastUpdateCycle = cpu.getClock();
 
-    frac += elapsed;
-
-    int inc = frac >> clockShift;
-
-    frac &= clockDiv - 1;
+    int inc = elapsed >> clockShift;
 
     // skip checking compare/overflow
     int incCounter = static_cast<int>(counter) + inc;
     if(incCounter < nextUpdate)
     {
         counter = incCounter;
+        lastUpdateCycle += inc << clockShift;
         return;
     }
 
@@ -1599,6 +1595,7 @@ void H8CPU::TPU::update(H8CPU &cpu)
 
         counter += step;
         inc -= step;
+        lastUpdateCycle += step << clockShift;
 
         if(counter == 0)
         {
@@ -1719,7 +1716,7 @@ void H8CPU::TPU::calcNextUpdate()
             nextUpdate = general[i];
     }
 
-    nextUpdateCycle = lastUpdateCycle + nextUpdate * clockDiv - frac;
+    nextUpdateCycle = lastUpdateCycle + nextUpdate * clockDiv;
 }
 
 uint8_t H8CPU::Timer::getReg(int reg) const

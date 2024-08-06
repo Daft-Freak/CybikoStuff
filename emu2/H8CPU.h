@@ -229,7 +229,6 @@ protected:
         const int index = 0;
 
         int clockDiv = 0, clockShift = 0;
-        int frac = 0;
 
         uint32_t lastUpdateCycle = 0;
         uint32_t nextUpdateCycle = 0;
