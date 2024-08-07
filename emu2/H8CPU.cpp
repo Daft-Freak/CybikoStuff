@@ -7,6 +7,18 @@
 #include "H8CPU.h"
 #include "Registers.h"
 
+#ifdef ANALYSER
+#define ANALYSER_ACCESS(...) analyser.indexedAccess(__VA_ARGS__)
+#define ANALYSER_CALL(...) analyser.call(__VA_ARGS__)
+#define ANALYSER_RET(...) analyser.ret(__VA_ARGS__)
+#define ANALYSER_INTERRUPT(...) analyser.interrupt(__VA_ARGS__)
+#else
+#define ANALYSER_ACCESS(...)
+#define ANALYSER_CALL(...)
+#define ANALYSER_RET(...)
+#define ANALYSER_INTERRUPT(...)
+#endif
+
 enum ConditionCode
 {
     CC_C = (1 << 0),
@@ -770,6 +782,8 @@ int H8CPU::executeInstruction()
         }
 
         case 0x68:
+            ANALYSER_ACCESS(er[b1h & 0x7], 0, b1h & 7, 1, b1 & 0x80);
+
             if(b1 & 0x80) //mov.b reg @reg
                 writeByte(er[b1h & 0x7], doMOV(reg<B>(b1l)));
             else //mov.b @reg reg
@@ -778,6 +792,8 @@ int H8CPU::executeInstruction()
             return fetchTiming(1) + byteAccessTiming(er[b1h & 0x7]);
 
         case 0x69:
+            ANALYSER_ACCESS(er[b1h & 0x7], 0, b1h & 7, 2, b1 & 0x80);
+
             if(b1 & 0x80) //mov.w reg @reg
                 writeWord(er[b1h & 0x7], doMOV(reg<W>(b1l)));
             else //mov.w @reg reg
@@ -829,6 +845,8 @@ int H8CPU::executeInstruction()
 
         case 0x6E:
         {
+            ANALYSER_ACCESS(er[b1h & 0x7], readDisp16(pc), b1h & 7, 1, b1 & 0x80);
+
             auto addr = er[b1h & 0x7] + readDisp16(pc);
             if(b1 & 0x80) //mov.b reg @reg + off:16
                 writeByte(addr, doMOV(reg<B>(b1l)));
@@ -841,6 +859,8 @@ int H8CPU::executeInstruction()
 
         case 0x6F:
         {
+            ANALYSER_ACCESS(er[b1h & 0x7], readDisp16(pc), b1h & 7, 2, b1 & 0x80);
+
             auto addr = er[b1h & 0x7] + readDisp16(pc);
             if(b1 & 0x80) //mov.w reg @reg + off:16
                 writeWord(addr, doMOV(reg<W>(b1l)));
@@ -2247,6 +2267,9 @@ void H8CPU::serviceInterrupt()
 
                 er[7] -= 4;
                 writeLong(er[7], pc | (ccr << 24));
+
+                ANALYSER_INTERRUPT(pc, addr, er);
+
                 pc = addr;
                 ccr |= CC_I;
                 sleeping = false;
@@ -2569,6 +2592,8 @@ int H8CPU::handleLongMOV0100()
         auto regA = (b3 & 0x70) >> 4;
         auto regB = b3 & 0xF;
 
+        ANALYSER_ACCESS(er[regA], 0, regA, 4, b3 & 0x80);
+
         if(b3 & 0x80) //mov.l reg @reg
             writeLong(er[regA], doMOV(er[regB]));
         else //mov.l @reg reg
@@ -2637,6 +2662,8 @@ int H8CPU::handleLongMOV0100()
         auto regA = (b3 & 0x70) >> 4;
         auto regB = b3 & 0xF;
         auto addr = er[regA] + readDisp16(pc);
+
+        ANALYSER_ACCESS(er[regA], readDisp16(pc), regA, 4, b3 & 0x80);
 
         if(b3 & 0x80) //mov.l reg @reg+off:16
             writeLong(addr, doMOV(er[regB]));
@@ -3976,6 +4003,11 @@ void H8CPU::doXOR(T a, T &b)
 
 void H8CPU::setPC(uint32_t addr, bool isCall, bool isRet)
 {
+    if(isCall)
+        ANALYSER_CALL(pc, addr, er);
+    else if(isRet)
+        ANALYSER_RET(addr, er);
+
     pc = addr;
 }
 
