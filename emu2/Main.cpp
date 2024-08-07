@@ -20,6 +20,70 @@
 #include "USBDevice.h"
 #include "Util.h"
 
+class Port1Sound final : public IODevice
+{
+public:
+    uint8_t read(uint32_t time) override
+    {
+        return 0;
+    }
+
+    void write(uint8_t val, uint32_t time) override
+    {
+        bool newSoundValue = val & (1 << 5);
+
+        if(newSoundValue != lastSoundValue)
+        {
+            updateAudio(time);
+            lastSoundValue = newSoundValue;
+        }
+    }
+
+    void setDirection(uint8_t dir, uint32_t time) override
+    {
+    }
+
+    void setAudioDevice(SDL_AudioDeviceID devId)
+    {
+        audioDev = devId;
+    }
+
+    void updateAudio(uint32_t time)
+    {
+        const unsigned int step = 18432000 / 48000;
+
+        audioCounter += time - lastWriteTime;
+
+        while(audioCounter >= step)
+        {
+            audioCounter -= step;
+            // output value
+            int v = lastSoundValue ? 127 : -128;
+            audioBuf[bufOffset++] = v;
+
+            if(bufOffset == sizeof(audioBuf))
+            {
+                if(audioDev)
+                    SDL_QueueAudio(audioDev, audioBuf, sizeof(audioBuf));
+
+                bufOffset = 0;
+            }
+        }
+
+        lastWriteTime = time;
+    }
+
+private:
+    uint32_t lastWriteTime = 0;
+    bool lastSoundValue = false;
+
+    uint32_t audioCounter = 0;
+
+    SDL_AudioDeviceID audioDev = 0;
+    int8_t audioBuf[512];
+    unsigned int bufOffset = 0;
+};
+
 // dec 2019
 class PortA : public IODevice
 {
@@ -154,7 +218,7 @@ int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
 
-    if(SDL_Init(SDL_INIT_TIMER) < 0)
+    if(SDL_Init(SDL_INIT_TIMER | SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0)
         return 1;
 
     // get data path
@@ -217,6 +281,7 @@ int main(int argc, char *args[])
     std::unique_ptr<KeyboardDevice> keyboard;
 
     std::unique_ptr<PCF8593> rtc;
+    std::unique_ptr<IODevice> port1;
 
     std::unique_ptr<BootSerial> bootSerial;
     auto rfSerial = std::make_unique<RFSerial>(); //cpu?
@@ -228,12 +293,14 @@ int main(int argc, char *args[])
 
     // classic
     std::unique_ptr<SerialFlash> serialFlash;
-    std::unique_ptr<IODevice> classicPort1, classicPort3, classicPortF;
+    std::unique_ptr<IODevice> classicPort3, classicPortF;
 
     if(xtreme)
     {
         flash = std::make_unique<MemoryDevice>(0x7FFFF);
         keyboard = std::make_unique<XtremeKeyboardDevice>();
+
+        port1 = std::make_unique<Port1Sound>();
 
         rtc = std::make_unique<PCF8593>(6, 1);
         serialNo = std::make_unique<DS2401>(cpu);
@@ -245,6 +312,7 @@ int main(int argc, char *args[])
         cpu.setExternalArea(3, flash.get()); //flash
         cpu.setExternalArea(7, keyboard.get()); //keyboard matrix
 
+        cpu.addIODevice(IOPort::_1, port1.get());
         cpu.addIODevice(IOPort::_6, serialNo.get());
         cpu.addIODevice(IOPort::A, miscPortA.get());
         cpu.addIODevice(IOPort::F, rtc.get());
@@ -300,11 +368,11 @@ int main(int argc, char *args[])
         cpu.setSerialDevice(2, bootSerial.get());
 
         // IO ports
-        classicPort1 = std::make_unique<Port1Classic>();
+        port1 = std::make_unique<Port1Classic>();
         classicPort3 = std::make_unique<Port3Classic>(*serialFlash);
         classicPortF = std::make_unique<PortFClassic>();
 
-        cpu.addIODevice(IOPort::_1, classicPort1.get());
+        cpu.addIODevice(IOPort::_1, port1.get());
         cpu.addIODevice(IOPort::_3, classicPort3.get());
         cpu.addIODevice(IOPort::F, rtc.get());
         cpu.addIODevice(IOPort::F, classicPortF.get());
@@ -366,6 +434,28 @@ int main(int argc, char *args[])
     auto texture = SDL_CreateTexture(sdlRenderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 160, 100);
     uint8_t screenBuffer[160 * 100 * 4]{0};
 
+    // audio
+    if(xtreme)
+    {
+        SDL_AudioSpec spec{};
+
+        spec.freq = 48000;
+        spec.format = AUDIO_S8;
+        spec.channels = 1;
+        spec.samples = 512;
+
+        auto audioDevice = SDL_OpenAudioDevice(nullptr, false, &spec, nullptr, 0);
+
+        if(!audioDevice)
+            std::cerr << "Failed to open audio: " << SDL_GetError() << "\n";
+        else
+        {
+            SDL_PauseAudioDevice(audioDevice, 0);
+
+            static_cast<Port1Sound *>(port1.get())->setAudioDevice(audioDevice);
+        }
+    }
+
     bool running = true;
     bool runCPU = true;
     auto lastTime = SDL_GetPerformanceCounter();
@@ -415,6 +505,10 @@ int main(int argc, char *args[])
                 runCPU = false;
                 break;
             }
+
+            // force audio update if TPU not running
+            if(!cpu.getTPUStarted(1) && xtreme)
+                static_cast<Port1Sound *>(port1.get())->updateAudio(cpu.getClock());
 
             if(benchmarkMode)
             {
