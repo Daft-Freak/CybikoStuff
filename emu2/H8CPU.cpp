@@ -160,6 +160,19 @@ bool H8CPU::executeCycles(int cycles)
         if(!(mstpcr & MSTPCR_A2D))
             updateADC(executed);
     }
+
+    // do a final sync of the TPU
+    // (for sound output)
+    if(!(mstpcr & MSTPCR_TPU))
+    {
+        auto tpuMask = tpuStart;
+        for(int i = 0; tpuMask; i++, tpuMask >>= 1)
+        {
+            if(tpuMask & 1)
+                tpuChannels[i].update(*this);
+        }
+    }
+
     return true;
 }
 
