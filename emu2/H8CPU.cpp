@@ -641,7 +641,7 @@ int H8CPU::executeInstruction()
         {
             assert(b1 == 0x70);
             auto val = readLong(er[7]);
-            pc = val & 0xFFFFFF;
+            setPC(val & 0xFFFFFF, false, true);
             ccr = val >> 24;
             er[7] += 4;
 
