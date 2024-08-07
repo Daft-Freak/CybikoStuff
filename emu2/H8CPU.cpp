@@ -1405,12 +1405,13 @@ uint8_t H8CPU::IOPort::read(uint32_t time) const
     return ret;
 }
 
-void H8CPU::IOPort::write(uint8_t val, uint32_t time)
+void H8CPU::IOPort::write(uint8_t val, uint32_t time, bool save)
 {
     for(auto &dev : devices)
         dev->write(val, time);
 
-    data = val;
+    if(save)
+        data = val;
 }
 
 uint8_t H8CPU::IOPort::getWrittenData() const
@@ -1468,33 +1469,12 @@ uint8_t H8CPU::TPU::getReg(int reg) const
 
 void H8CPU::TPU::setReg(int reg, uint8_t val)
 {
-    static const char *regNames[]{
-        "TCR",
-        "TMDR",
-        "TIORH",
-        "TIORL",
-        /*"TIER",
-        "TSR",
-        "TCNTH",
-        "TCNTL",
-
-        "TGRAH",
-        "TGRAL",
-        "TGRBH",
-        "TGRBL",
-        "TGRCH",
-        "TGRCL",
-        "TGRDH",
-        "TGRDL"*/
-    };
-
     switch(reg)
     {
         case 0: // TCR
         {
             // edge bits
-            if(val & 0x18)
-                std::cout << "TPU" << index << " TCR = " << std::hex << static_cast<int>(val) << std::dec << std::endl;
+            int edge = (val >> 3) & 3;
 
             // 0: 1, 4, 16, 64, tca,  tcb,  tcc, tcd
             // 1: 1, 4, 16, 64, tca,  tcb,  256, tcnt2 ovr/undr
@@ -1514,6 +1494,10 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
                 clockShift = -1;
             }
 
+            // both edges, half divider
+            if(edge == 2 && clockShift)
+                clockShift--;
+
             clockDiv = clockShift == -1 ? 0 : 1 << clockShift;
 
             clearOn = val >> 5;
@@ -1525,6 +1509,49 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
 
             break;
         }
+
+        case 1: // TMDR
+        {
+            int mode = val & 0xF;
+            if(val & 0x30 /*buffer*/ || (mode != 0 /*normal*/ && mode != 3 /*PWM 2*/))
+                std::cout << "TPU" << index << " TMDR = " << std::hex << static_cast<int>(val) << std::dec << std::endl;
+
+            this->mode = val;
+            break;
+        }
+
+        case 2: // TIORH / TIOR
+            if(index == 0 || index == 3) // only TPU0/3 have the full register
+                ioControl = (ioControl & 0xFF) | val << 8;
+            else
+            {
+                ioControl = val;
+
+                // any output, not input
+                bool enableA = (ioControl & 0x03) && !(ioControl & 0x08);
+                bool enableB = (ioControl & 0x30) && !(ioControl & 0x80);
+
+                ioMask = (enableA ? (1 << 0) : 0)
+                       | (enableB ? (1 << 1) : 0);
+            }
+            break;
+        case 3: // TIORL
+            if(index == 0 || index == 3)
+            {
+                ioControl = (ioControl & 0xFF00) | val;
+            
+                // any output, not input
+                bool enableA = (ioControl & 0x0003) && !(ioControl & 0x0008);
+                bool enableB = (ioControl & 0x0030) && !(ioControl & 0x0080);
+                bool enableC = (ioControl & 0x0300) && !(ioControl & 0x0800);
+                bool enableD = (ioControl & 0x3000) && !(ioControl & 0x8000);
+
+                ioMask = (enableA ? (1 << 0) : 0)
+                       | (enableB ? (1 << 1) : 0)
+                       | (enableC ? (1 << 2) : 0)
+                       | (enableD ? (1 << 3) : 0);
+            }
+            break;
 
         case 4: // TIER
             if(val & 0x80)
@@ -1561,10 +1588,6 @@ void H8CPU::TPU::setReg(int reg, uint8_t val)
             general[(reg >> 1) & 3] = val | (general[(reg >> 1) & 3] & 0xFF00);
             calcNextUpdate();
             break;
-
-        default:
-            if(index != 1 && index != 2) // sound/vibration
-                std::cout << "TPU" << index << " " << regNames[reg] << " = " << std::hex << static_cast<int>(val) << std::dec << std::endl;
     }
 }
 
@@ -1588,6 +1611,30 @@ void H8CPU::TPU::update(H8CPU &cpu)
         lastUpdateCycle += inc << clockShift;
         return;
     }
+
+    auto clear = [this, &cpu]()
+    {
+        counter = 0;
+
+        if((mode & 0xF) == 3)
+        {
+            // PWM mode 2
+            // set outputs to initial value
+
+            if(ioControl & 0x03) // A
+            {
+                bool initial1 = ioControl & 0x04;
+                setIO(cpu, 0, initial1);
+            }
+            if(ioControl & 0x30) // B
+            {
+                bool initial1 = ioControl & 0x40;
+                setIO(cpu, 1, initial1);
+            }
+
+            // TODO? TPU0/3 C/D
+        }
+    };
 
     while(inc)
     {
@@ -1617,14 +1664,14 @@ void H8CPU::TPU::update(H8CPU &cpu)
             }
         }
 
-        // TODO: TIOR
+        // TODO: TIOR C/D?
 
         if(counter == general[0])
         {
             // compare match a
             status |= (1 << 0); // TGFA
             if(clearOn == 1)
-                counter = 0;
+                clear();
 
             if(interruptEnable & (1 << 0))
             {
@@ -1639,6 +1686,19 @@ void H8CPU::TPU::update(H8CPU &cpu)
                 };
                 cpu.interrupt(interrupts[index]);
             }
+
+            // set IO
+            if((ioControl & 0x03) && !(ioControl & 0x08)/*not input*/)
+            {
+                bool value = false;
+                switch(ioControl & 0x03)
+                {
+                    case 1: value = false; break;
+                    case 2: value = true; break;
+                    case 3: value = !(ioState & (1 << 0)); break;
+                }
+                setIO(cpu, 0, value);
+            }
         }
 
         if(counter == general[1])
@@ -1646,7 +1706,7 @@ void H8CPU::TPU::update(H8CPU &cpu)
             // compare match b
             status |= (1 << 1); // TGFB
             if(clearOn == 2)
-                counter = 0;
+                clear();
 
             if(interruptEnable & (1 << 1))
             {
@@ -1661,6 +1721,19 @@ void H8CPU::TPU::update(H8CPU &cpu)
                 };
                 cpu.interrupt(interrupts[index]);
             }
+
+            // set IO
+            if((ioControl & 0x30) && !(ioControl & 0x80)/*not input*/)
+            {
+                bool value = false;
+                switch((ioControl >> 4) & 0x03)
+                {
+                    case 1: value = false; break;
+                    case 2: value = true; break;
+                    case 3: value = !(ioState & (1 << 1)); break;
+                }
+                setIO(cpu, 1, value);
+            }
         }
 
         if(index != 0 && index != 3)
@@ -1674,7 +1747,7 @@ void H8CPU::TPU::update(H8CPU &cpu)
             // compare match c
             status |= (1 << 2); // TGFC
             if(clearOn == 5)
-                counter = 0;
+                clear();
 
             if(interruptEnable & (1 << 2))
                 cpu.interrupt(index == 0 ? InterruptSource::TGI0C : InterruptSource::TGI3C);
@@ -1685,7 +1758,7 @@ void H8CPU::TPU::update(H8CPU &cpu)
             // compare match d
             status |= (1 << 3); // TGFD
             if(clearOn == 6)
-                counter = 0;
+                clear();
 
             if(interruptEnable & (1 << 3))
                 cpu.interrupt(index == 0 ? InterruptSource::TGI0D : InterruptSource::TGI3D);
@@ -1703,6 +1776,21 @@ void H8CPU::TPU::updateForInterrupts(H8CPU &cpu)
         update(cpu);
 }
 
+void H8CPU::TPU::setEnabled(H8CPU &cpu, bool enabled)
+{
+    // restore initial values
+    if(ioControl & 0x03) // A
+    {
+        bool initial1 = ioControl & 0x04;
+        setIO(cpu, 0, initial1);
+    }
+    if(ioControl & 0x30) // B
+    {
+        bool initial1 = ioControl & 0x40;
+        setIO(cpu, 1, initial1);
+    }
+}
+
 void H8CPU::TPU::calcNextUpdate()
 {
     nextUpdate = 0x10000; // overflow
@@ -1717,6 +1805,16 @@ void H8CPU::TPU::calcNextUpdate()
     }
 
     nextUpdateCycle = lastUpdateCycle + nextUpdate * clockDiv;
+}
+
+void H8CPU::TPU::setIO(H8CPU &cpu, int ioIndex, bool value)
+{
+    if(value)
+        ioState |= 1 << ioIndex;
+    else
+        ioState &= ~(1 << ioIndex);
+
+    cpu.updateTPUIO(index, lastUpdateCycle);
 }
 
 uint8_t H8CPU::Timer::getReg(int reg) const
@@ -2413,6 +2511,33 @@ void H8CPU::updateADC(int cycles)
 
         a2dConvCounter += a2dConversionTime;
     }
+}
+
+void H8CPU::updateTPUIO(int tpu, uint32_t time)
+{
+    int tpuBase = tpu < 3 ? 0 : 3;
+
+    int port = tpu < 3 ? 0 : 1; // port 1 or 2
+    int pinBase = 0;
+
+    auto ioVal = ioPorts[port].getWrittenData();
+
+    uint8_t tpuMask = 0;
+    uint8_t tpuVal = 0;
+    
+    for(int i = 0; i < 3; i++)
+    {
+        tpuVal |= tpuChannels[tpuBase + i].getIOState() << pinBase;
+        tpuMask |= tpuChannels[tpuBase + i].getIOMask() << pinBase;
+
+        // TPU0/3 have four outputs
+        if(i == 0)
+            pinBase += 4;
+        else
+            pinBase += 2;
+    }
+
+    ioPorts[port].write((ioVal & ~tpuMask) | (tpuVal & tpuMask), time, false);
 }
 
 int H8CPU::handleLongMOV0100()

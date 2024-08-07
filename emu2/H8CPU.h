@@ -193,7 +193,7 @@ protected:
         IOPort(int index) : index(index) {}
 
         uint8_t read(uint32_t time) const;
-        void write(uint8_t val, uint32_t time);
+        void write(uint8_t val, uint32_t time, bool save = true);
         uint8_t getWrittenData() const;
 
         void setDirection(uint8_t dir, uint32_t time);
@@ -223,8 +223,14 @@ protected:
         void update(H8CPU &cpu);
         void updateForInterrupts(H8CPU &cpu);
 
+        void setEnabled(H8CPU &cpu, bool enabled);
+
+        uint8_t getIOState() const {return ioState;}
+        uint8_t getIOMask() const {return ioMask;}
+
     protected:
         void calcNextUpdate();
+        void setIO(H8CPU &cpu, int ioIndex, bool value);
 
         const int index = 0;
 
@@ -235,6 +241,10 @@ protected:
         int nextUpdate = 0;
         int clearOn = 0;
 
+        uint8_t ioState = 0, ioMask = 0;
+
+        uint8_t mode = 0;
+        uint16_t ioControl = 0;
         uint8_t interruptEnable = 0;
         uint8_t status = 0;
         uint16_t counter = 0;
@@ -306,6 +316,8 @@ protected:
 
     bool updateDTC();
     void updateADC(int cycles);
+
+    void updateTPUIO(int tpu, uint32_t time);
 
     // some of the longer encodings
     inline int handleLongMOV0100();
