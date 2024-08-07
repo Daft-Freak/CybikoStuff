@@ -157,6 +157,8 @@ public:
 
     void setADCValue(unsigned channel, uint16_t value);
 
+    bool getTPUStarted(int i) const;
+
     bool getSleeping() const;
     uint32_t getClock() const;
 

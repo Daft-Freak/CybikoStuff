@@ -1057,6 +1057,11 @@ void H8CPU::setADCValue(unsigned channel, uint16_t value)
         a2dValues[channel] = value;
 }
 
+bool H8CPU::getTPUStarted(int i) const
+{
+    return tpuStart & (1 << i);
+}
+
 bool H8CPU::getSleeping() const
 {
     return sleeping;
