@@ -4595,7 +4595,10 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
             {
                 // update any channels that are getting stopped/started
                 if(changed & (1 << i))
+                {
                     tpuChannels[i].update(*this);
+                    tpuChannels[i].setEnabled(*this, val & (1 << i));
+                }
             }
             tpuStart = val;
             break;
