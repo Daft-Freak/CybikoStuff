@@ -4248,7 +4248,22 @@ void H8CPU::writeIOReg(uint32_t addr, uint8_t val)
     // PxDR
     if((addr & 0xFF0) == 0xF60)
     {
-        ioPorts[addr & 0xF].write(val, clock);
+        int port = addr & 0xF;
+
+        // sync TPUs that might write the port first
+        if(port == 0) // port 1
+        {
+            tpuChannels[0].update(*this);
+            tpuChannels[1].update(*this);
+            tpuChannels[2].update(*this);
+        }
+        else if(port == 1) // port 2
+        {
+            tpuChannels[3].update(*this);
+            tpuChannels[4].update(*this);
+            tpuChannels[5].update(*this);
+        }
+        ioPorts[port].write(val, clock);
         return;
     }
 
