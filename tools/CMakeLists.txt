@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.9)
+
 project(CybikoTools)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
