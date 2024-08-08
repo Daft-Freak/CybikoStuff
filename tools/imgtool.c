@@ -110,12 +110,14 @@ static void usage()
     printf("\t-e: encode file (default)\n");
     printf("\t-b: BMC encoding\n");
     printf("\t-l: LZSS endoding\n");
+    printf("\t-o [offset]: seek to offset in input file before decode\n");
 }
 
 int main(int argc, char *argv[])
 {
     Encoding enc = Encoding_None;
     bool decode = false;
+    int inOffset = 0;
 
     // parse arguments
     int i = 1;
@@ -124,9 +126,11 @@ int main(int argc, char *argv[])
         if(argv[i][0] != '-')
             break;
 
-        for(int j = 1; argv[i][j]; j++)
+        const char *flags = argv[i];
+
+        for(int j = 1; flags[j]; j++)
         {
-            switch(argv[i][j])
+            switch(flags[j])
             {
                 case 'd':
                     decode = true;
@@ -140,6 +144,20 @@ int main(int argc, char *argv[])
                 case 'l':
                     enc = Encoding_LZSS;
                     break;
+                case 'o':
+                    // not last arg, no more flags
+                    if(i + 1 < argc && !flags[j + 1])
+                    {
+                        inOffset = atoi(argv[++i]);
+                    }
+                    else
+                    {
+                        printf("Invalid flag: %c\n", argv[i][j]);
+                        usage();
+                        return 1;
+                    }
+                    break;
+
                 default:
                     printf("Invalid flag: %c\n", argv[i][j]);
                     usage();
@@ -168,6 +186,8 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to open input file\n");
         return 1;
     }
+
+    fseek(inFile, inOffset, SEEK_SET);
 
     FILE *outFile = fopen(argv[i + 1], "wb");
     if(!outFile)
