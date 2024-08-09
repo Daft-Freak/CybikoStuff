@@ -91,13 +91,42 @@ static bool doEncodeBMC(FILE *inFile, FILE *outFile)
     return true;
 }
 
-static bool decodeLZSS(FILE *inFile, FILE *outFile)
+static bool doDecodeLZSS(FILE *inFile, FILE *outFile)
 {
-    printf("LZSS decode not implemented!\n");
-    return false;
+    uint8_t head[4];
+    uint8_t expectedHead[4] = {0x01, 0xC0, 0xFF, 0xAB};
+    fread(head, 4, 1, inFile);
+
+    if(memcmp(head, expectedHead, 4) != 0)
+    {
+        printf("Invalid LZSS header! (expected 01C0FFAB, got %02X%02X%02X%02X)\n", head[0], head[1], head[2], head[3]);
+        return false;
+    }
+
+    uint32_t compressedLength = readInt(inFile);
+    uint32_t decompressedLength = readInt(inFile);
+
+    // read in file
+    uint8_t *inData = malloc(compressedLength), *outData = malloc(decompressedLength);
+    fread(inData, 1, compressedLength, inFile);
+
+    // decode
+    if(!decodeLZSS(inData, outData, compressedLength, decompressedLength))
+    {
+        free(inData);
+        free(outData);
+        return false;
+    }
+
+    fwrite(outData, 1, compressedLength, outFile);
+
+    free(inData);
+    free(outData);
+
+    return true;
 }
 
-static bool encodeLZSS(FILE *inFile, FILE *outFile)
+static bool doEncodeLZSS(FILE *inFile, FILE *outFile)
 {
     printf("LZSS encode not implemented!\n");
     return false;
@@ -209,9 +238,9 @@ int main(int argc, char *argv[])
     else if(enc == Encoding_LZSS)
     {
         if(decode)
-            res = decodeLZSS(inFile, outFile) ? 0 : 1;
+            res = doDecodeLZSS(inFile, outFile) ? 0 : 1;
         else
-            res = encodeLZSS(inFile, outFile) ? 0 : 1;
+            res = doEncodeLZSS(inFile, outFile) ? 0 : 1;
     }
     fclose(inFile);
     fclose(outFile);
