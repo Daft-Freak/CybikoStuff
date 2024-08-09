@@ -118,7 +118,7 @@ static bool doDecodeLZSS(FILE *inFile, FILE *outFile)
         return false;
     }
 
-    fwrite(outData, 1, compressedLength, outFile);
+    fwrite(outData, 1, decompressedLength, outFile);
 
     free(inData);
     free(outData);
