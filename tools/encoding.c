@@ -1,3 +1,5 @@
+#include <stddef.h>
+
 #include "encoding.h"
 
 void encodeBMC(uint8_t *in, uint8_t *out, int length)
@@ -56,4 +58,68 @@ bool decodeLZSS(uint8_t *in, uint8_t *out, int inLength, int outLength)
 
     // fail if partial
     return inPtr == inEnd && outPtr == outEnd;
+}
+
+int encodeLZSS(uint8_t *in, uint8_t *out, int inLength)
+{
+     uint8_t *inEnd = in + inLength;
+
+    uint8_t *inPtr = in;
+    uint8_t *outPtr = out;
+
+    uint8_t *flagsPtr = NULL;
+    int flagBitsUsed = 8;
+    
+    while(inPtr != inEnd)
+    {
+        if(flagBitsUsed == 8)
+        {
+            flagsPtr = outPtr++;
+            *flagsPtr = 0;
+            flagBitsUsed = 0;
+        }
+
+        int bestLen = 0;
+        int bestOff = 0;
+
+        // search for longest match
+        for(int offset = 1; offset <= 0xFFF; offset++)
+        {
+            uint8_t *ptr = inPtr - offset;
+            if(ptr < in)
+                break;
+
+            int len = 0;
+            for(; len < 16 + 3 && inPtr + len != inEnd; len++)
+            {
+                if(ptr[len] != inPtr[len])
+                    break;
+            }
+
+            // clamp
+            if(len == 16 + 3)
+                len--;
+
+            if(len > bestLen)
+            {
+                bestLen = len;
+                bestOff = offset;
+            }
+        }
+        if(bestLen >= 3)
+        {
+            *outPtr++ = bestOff & 0xFF;
+            *outPtr++ = (bestLen - 3) | (bestOff & 0xF00) >> 4;
+            inPtr += bestLen;
+        }
+        else
+        {
+            // no match or too short, copy
+            *flagsPtr |= 1 << flagBitsUsed;
+            *outPtr++ = *inPtr++;
+        }
+        flagBitsUsed++;
+    }
+
+    return outPtr - out;
 }

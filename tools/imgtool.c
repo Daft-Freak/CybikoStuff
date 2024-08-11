@@ -128,8 +128,34 @@ static bool doDecodeLZSS(FILE *inFile, FILE *outFile)
 
 static bool doEncodeLZSS(FILE *inFile, FILE *outFile)
 {
-    printf("LZSS encode not implemented!\n");
-    return false;
+    // header
+    uint8_t head[4] = {0x01, 0xC0, 0xFF, 0xAB};
+    fwrite(head, 4, 1, outFile);
+
+    // read in file
+    fseek(inFile, 0, SEEK_END);
+    long inLength = ftell(inFile);
+    fseek(inFile, 0, SEEK_SET);
+
+    uint8_t *inData = malloc(inLength);
+    fread(inData, 1, inLength, inFile);
+
+    // worst case output buffer
+    uint8_t *outData = malloc(inLength + (inLength + 7) / 8);
+    int outLength = 0;
+
+    // encode
+    outLength = encodeLZSS(inData, outData, inLength);
+
+    // write lengths and data
+    writeInt(outLength, outFile);
+    writeInt(inLength, outFile);
+    fwrite(outData, 1, outLength, outFile);
+
+    free(inData);
+    free(outData);
+
+    return true;
 }
 
 static void usage()
