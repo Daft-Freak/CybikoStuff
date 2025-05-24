@@ -2,7 +2,7 @@
 
 #include "encoding.h"
 
-void encodeBMC(uint8_t *in, uint8_t *out, int length)
+void encodeBoot(uint8_t *in, uint8_t *out, int length)
 {
     uint32_t key = 0x1649b442;
 

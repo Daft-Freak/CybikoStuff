@@ -9,7 +9,7 @@
 typedef enum Encoding
 {
     Encoding_None,
-    Encoding_BMC,
+    Encoding_Boot, // this is the format USB boot expects, but isn't named in the serial output
     Encoding_LZSS
 } Encoding;
 
@@ -33,7 +33,7 @@ static uint32_t readInt(FILE *file)
     return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 }
 
-static bool doDecodeBMC(FILE *inFile, FILE *outFile)
+static bool doDecodeBoot(FILE *inFile, FILE *outFile)
 {
     uint8_t head[4];
     uint8_t expectedHead[4] = {0xFF, 0xC0, 0xFF, 0xAB};
@@ -41,7 +41,7 @@ static bool doDecodeBMC(FILE *inFile, FILE *outFile)
 
     if(memcmp(head, expectedHead, 4) != 0)
     {
-        printf("Invalid BMC header! (expected FFC0FFAB, got %02X%02X%02X%02X)\n", head[0], head[1], head[2], head[3]);
+        printf("Invalid boot header! (expected FFC0FFAB, got %02X%02X%02X%02X)\n", head[0], head[1], head[2], head[3]);
         return false;
     }
 
@@ -53,7 +53,7 @@ static bool doDecodeBMC(FILE *inFile, FILE *outFile)
     fread(inData, 1, length, inFile);
 
     // decode
-    encodeBMC(inData, outData, length);
+    encodeBoot(inData, outData, length);
 
     fwrite(outData, 1, length, outFile);
 
@@ -63,7 +63,7 @@ static bool doDecodeBMC(FILE *inFile, FILE *outFile)
     return true;
 }
 
-static bool doEncodeBMC(FILE *inFile, FILE *outFile)
+static bool doEncodeBoot(FILE *inFile, FILE *outFile)
 {
     uint8_t head[4] = {0xFF, 0xC0, 0xFF, 0xAB};
     fwrite(head, 4, 1, outFile);
@@ -81,7 +81,7 @@ static bool doEncodeBMC(FILE *inFile, FILE *outFile)
     writeInt(length, outFile);
 
     // encode
-    encodeBMC(inData, outData, length);
+    encodeBoot(inData, outData, length);
 
     fwrite(outData, 1, length, outFile);
 
@@ -163,7 +163,7 @@ static void usage()
     printf("usage: imgtool [options] [input file] [output file]\n\n");
     printf("\t-d: decode file\n");
     printf("\t-e: encode file (default)\n");
-    printf("\t-b: BMC encoding\n");
+    printf("\t-b: \"boot\" encoding\n");
     printf("\t-l: LZSS endoding\n");
     printf("\t-o [offset]: seek to offset in input file before decode\n");
 }
@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
                     decode = false;
                     break;
                 case 'b':
-                    enc = Encoding_BMC;
+                    enc = Encoding_Boot;
                     break;
                 case 'l':
                     enc = Encoding_LZSS;
@@ -254,12 +254,12 @@ int main(int argc, char *argv[])
 
     int res = 0;
 
-    if(enc == Encoding_BMC)
+    if(enc == Encoding_Boot)
     {
         if(decode)
-            res = doDecodeBMC(inFile, outFile) ? 0 : 1;
+            res = doDecodeBoot(inFile, outFile) ? 0 : 1;
         else
-            res = doEncodeBMC(inFile, outFile) ? 0 : 1;
+            res = doEncodeBoot(inFile, outFile) ? 0 : 1;
     }
     else if(enc == Encoding_LZSS)
     {

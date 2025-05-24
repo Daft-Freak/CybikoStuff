@@ -685,7 +685,7 @@ static void bootDevice(libusb_device_handle *dev, const char *filename)
         newBuf[6] = newBuf[10] = size >> 8;
         newBuf[7] = newBuf[11] = size;
 
-        encodeBMC(fileData, newBuf + 12, size);
+        encodeBoot(fileData, newBuf + 12, size);
 
         // swap to encoded image
         free(fileData);
