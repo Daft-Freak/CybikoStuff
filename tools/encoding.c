@@ -587,24 +587,24 @@ int encodeBMC(uint8_t *in, uint8_t *out, int inLength, int maxOutLength)
         int bestOff = 0;
 
         // search for longest match
-        for(int offset = 1; offset <= 0x8192; offset++)
+        for(int offset = 1; offset < 8192 + 256; offset++)
         {
             uint8_t *ptr = inPtr - offset;
             if(ptr < in)
                 break;
 
             int len = 0;
-            for(; len <= 256 && inPtr + len != inEnd && ptr != inPtr; len++)
+            for(; len <= 256 && inPtr + len != inEnd && len < offset; len++)
             {
                 if(ptr[len] != inPtr[len])
                     break;
             }
 
             // clamp
-            if(len > 256 || ptr == inPtr)
+            if(len > 256)
                 len--;
 
-            if(len > bestLen && offset >= len)
+            if(len > bestLen && offset - len <= 8191)
             {
                 bestLen = len;
                 bestOff = offset;
