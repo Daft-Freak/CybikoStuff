@@ -46,6 +46,44 @@ static int BitStream_readBits(BitStream *stream, int bits)
     return ret;
 }
 
+static void BitStream_writeBit(BitStream *stream, int bit)
+{
+    if(stream->data == stream->dataEnd)
+        return;
+
+    stream->curByte >>= 1;
+    stream->curByte |= bit << 7;
+
+    stream->numBits++;
+
+    if(stream->numBits == 8)
+    {
+        *stream->data++ = stream->curByte;
+        stream->numBits = 0;
+    }
+}
+
+static int BitStream_writeBits(BitStream *stream, int bits, int value)
+{
+    int ret = 0;
+
+    for(int i = 0; i < bits; i++, value <<= 1)
+        BitStream_writeBit(stream, (value >> (bits - 1)) & 1);
+
+    return ret;
+}
+
+static void BitStream_flush(BitStream *stream)
+{
+    if(stream->data == stream->dataEnd || stream->numBits == 0)
+        return;
+
+    stream->curByte >>= (8 - stream->numBits);
+
+    *stream->data++ = stream->curByte;
+    stream->numBits = 0;
+}
+
 static bool BitStream_eof(BitStream *stream)
 {
     return stream->data == stream->dataEnd;
@@ -326,4 +364,269 @@ bool decodeBMC(uint8_t *in, uint8_t *out, int inLength, int outLength)
 
     // fail if partial
     return BitStream_eof(&inStream) && outPtr == outEnd;
+}
+
+static void writeBMCLength(BitStream *stream, int length)
+{
+    // range is 2-256
+
+    if(length < 4) // 2 bits
+        BitStream_writeBits(stream, 2, length - 2);
+    else if(length < 6) // 3 bits
+    {
+        BitStream_writeBits(stream, 2, 2);
+        BitStream_writeBit(stream, length - 4);
+    }
+    else
+    {
+        BitStream_writeBits(stream, 2, 3);
+
+        if(length == 6) // 4 bits
+            BitStream_writeBits(stream, 2, 0);
+        else if(length == 7) // 5 bits
+        {
+            BitStream_writeBits(stream, 2, 2);
+            BitStream_writeBit(stream, 0);
+        }
+        else if(length < 10) // 5 bits
+        {
+            BitStream_writeBits(stream, 2, 1);
+            BitStream_writeBit(stream, length - 8);
+        }
+        else if(length < 12) // 6 bits
+        {
+            BitStream_writeBits(stream, 2, 2);
+            BitStream_writeBit(stream, 1);
+            BitStream_writeBit(stream, length - 10);
+        }
+        else
+        {
+            BitStream_writeBits(stream, 2, 3);
+
+            if(length < 14) // 7 bits
+                BitStream_writeBits(stream, 3, length - 12);
+            else if(length == 14) // 7 bits
+                BitStream_writeBits(stream, 3, 5);
+            else if(length == 15) // 8 bits
+            {
+                BitStream_writeBits(stream, 3, 7);
+                BitStream_writeBit(stream, 0);
+            }
+            else if(length < 18) // 8 bits
+            {
+                BitStream_writeBits(stream, 3, 3);
+                BitStream_writeBit(stream, length - 16);
+            }
+            else if(length < 20) // 9 bits
+            {
+                BitStream_writeBits(stream, 3, 6);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, length - 18);
+            }
+            else if(length < 24) // 9 bits
+            {
+                BitStream_writeBits(stream, 3, 2);
+                BitStream_writeBits(stream, 2, length - 20);
+            }
+            else if(length < 32) // 10 bits
+            {
+                BitStream_writeBits(stream, 3, 4);
+                BitStream_writeBits(stream, 3, length - 24);
+            }
+            else if(length < 64) // 13 bits
+            {
+                BitStream_writeBits(stream, 3, 6);
+                BitStream_writeBit(stream, 0);
+                BitStream_writeBits(stream, 5, length - 32);
+            }
+            else if(length < 128) // 15 bits
+            {
+                BitStream_writeBits(stream, 3, 7);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, 0);
+                BitStream_writeBits(stream, 6, length - 64);
+            }
+            else if(length < 256) // 17 bits
+            {
+                BitStream_writeBits(stream, 3, 7);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, 0);
+                BitStream_writeBits(stream, 7, length - 128);
+            }
+            else if(length == 256) // 10 bits
+            {
+                BitStream_writeBits(stream, 3, 7);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, 1);
+                BitStream_writeBit(stream, 1);
+            }
+        }
+    }
+}
+
+static void writeBMCOffset(BitStream *stream, int offset)
+{
+    // range is 0-8191
+
+    if(offset < 2) // 6 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 0);
+        BitStream_writeBit(stream, offset);
+    }
+    else if(offset == 2) // 6 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 2);
+        BitStream_writeBit(stream, 1);
+    }
+    else if(offset == 3) // 7 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 3);
+        BitStream_writeBits(stream, 2, 2);
+    }
+    else if(offset < 6) // 7 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 2);
+        BitStream_writeBit(stream, 0);
+        BitStream_writeBit(stream, offset - 4);
+    }
+    else if(offset < 10) // 7 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 1);
+        BitStream_writeBits(stream, 2, offset - 6);
+    }
+    else if(offset < 12) // 8 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 3);
+        BitStream_writeBits(stream, 2, 3);
+        BitStream_writeBit(stream, offset - 10);
+    }
+    else if(offset < 14) // 8 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 3);
+        BitStream_writeBits(stream, 2, 0);
+        BitStream_writeBit(stream, offset - 12);
+    }
+    else if(offset < 16) // 8 bits
+    {
+        BitStream_writeBits(stream, 3, 7);
+        BitStream_writeBits(stream, 2, 3);
+        BitStream_writeBits(stream, 2, 1);
+        BitStream_writeBit(stream, offset - 14);
+    }
+    else if(offset < 32) // 8 bits
+    {
+        BitStream_writeBits(stream, 3, 6);
+        BitStream_writeBit(stream, 1);
+        BitStream_writeBits(stream, 4, offset - 16);
+    }
+    else if(offset < 64) // 9 bits
+    {
+        BitStream_writeBits(stream, 3, 6);
+        BitStream_writeBit(stream, 0);
+        BitStream_writeBits(stream, 5, offset - 32);
+    }
+    else if(offset < 128) // 9 bits
+    {
+        BitStream_writeBits(stream, 3, 3);
+        BitStream_writeBits(stream, 6, offset - 64);
+    }
+    else if(offset < 256) // 10 bits
+    {
+        BitStream_writeBits(stream, 3, 4);
+        BitStream_writeBits(stream, 7, offset - 128);
+    }
+    else if(offset < 512) // 11 bits
+    {
+        BitStream_writeBits(stream, 3, 2);
+        BitStream_writeBits(stream, 8, offset - 256);
+    }
+    else if(offset < 1024) // 12 bits
+    {
+        BitStream_writeBits(stream, 3, 1);
+        BitStream_writeBits(stream, 9, offset - 512);
+    }
+    else if(offset < 2048) // 13 bits
+    {
+        BitStream_writeBits(stream, 3, 0);
+        BitStream_writeBits(stream, 10, offset - 1024);
+    }
+    else if(offset < 4096) // 15 bits
+    {
+        BitStream_writeBits(stream, 3, 5);
+        BitStream_writeBit(stream, 0);
+        BitStream_writeBits(stream, 11, offset - 2048);
+    }
+    else if(offset < 8192) // 16 bits
+    {
+        BitStream_writeBits(stream, 3, 5);
+        BitStream_writeBit(stream, 1);
+        BitStream_writeBits(stream, 12, offset - 4096);
+    }
+}
+
+int encodeBMC(uint8_t *in, uint8_t *out, int inLength, int maxOutLength)
+{
+    BitStream outStream;
+    BitStream_init(&outStream, out, maxOutLength);
+
+    uint8_t *inEnd = in + inLength;
+
+    uint8_t *inPtr = in;
+
+    while(inPtr != inEnd)
+    {
+        int bestLen = 0;
+        int bestOff = 0;
+
+        // search for longest match
+        for(int offset = 1; offset <= 0x8192; offset++)
+        {
+            uint8_t *ptr = inPtr - offset;
+            if(ptr < in)
+                break;
+
+            int len = 0;
+            for(; len <= 256 && inPtr + len != inEnd && ptr != inPtr; len++)
+            {
+                if(ptr[len] != inPtr[len])
+                    break;
+            }
+
+            // clamp
+            if(len > 256 || ptr == inPtr)
+                len--;
+
+            if(len > bestLen && offset >= len)
+            {
+                bestLen = len;
+                bestOff = offset;
+            }
+        }
+        if(bestLen >= 2)
+        {
+            BitStream_writeBit(&outStream, 1);
+            writeBMCLength(&outStream, bestLen);
+            writeBMCOffset(&outStream, bestOff - bestLen);
+
+            inPtr += bestLen;
+        }
+        else
+        {
+            // no match or too short, copy
+            BitStream_writeBit(&outStream, 0);
+            BitStream_writeBits(&outStream, 8, *inPtr++);
+        }
+    }
+
+    BitStream_flush(&outStream);
+
+    return outStream.data - out;
 }
