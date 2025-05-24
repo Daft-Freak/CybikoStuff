@@ -10,7 +10,8 @@ typedef enum Encoding
 {
     Encoding_None,
     Encoding_Boot, // this is the format USB boot expects, but isn't named in the serial output
-    Encoding_LZSS
+    Encoding_LZSS,
+    Encoding_BMC,
 } Encoding;
 
 static size_t writeInt(uint32_t i, FILE *file)
@@ -158,6 +159,47 @@ static bool doEncodeLZSS(FILE *inFile, FILE *outFile)
     return true;
 }
 
+static bool doDecodeBMC(FILE *inFile, FILE *outFile)
+{
+    uint8_t head[4];
+    uint8_t expectedHead[4] = {0x02, 0xC0, 0xFF, 0xAB};
+    fread(head, 4, 1, inFile);
+
+    if(memcmp(head, expectedHead, 4) != 0)
+    {
+        printf("Invalid BMC header! (expected 02C0FFAB, got %02X%02X%02X%02X)\n", head[0], head[1], head[2], head[3]);
+        return false;
+    }
+
+    uint32_t compressedLength = readInt(inFile);
+    uint32_t decompressedLength = readInt(inFile);
+
+    // read in file
+    uint8_t *inData = malloc(compressedLength), *outData = malloc(decompressedLength);
+    fread(inData, 1, compressedLength, inFile);
+
+    // decode
+    if(!decodeBMC(inData, outData, compressedLength, decompressedLength))
+    {
+        free(inData);
+        free(outData);
+        return false;
+    }
+
+    fwrite(outData, 1, decompressedLength, outFile);
+
+    free(inData);
+    free(outData);
+
+    return true;
+}
+
+static bool doEncodeBMC(FILE *inFile, FILE *outFile)
+{
+    printf("BMC encode not implemented!\n");
+    return false;
+}
+
 static void usage()
 {
     printf("usage: imgtool [options] [input file] [output file]\n\n");
@@ -165,6 +207,7 @@ static void usage()
     printf("\t-e: encode file (default)\n");
     printf("\t-b: \"boot\" encoding\n");
     printf("\t-l: LZSS endoding\n");
+    printf("\t-m: BMC endoding\n");
     printf("\t-o [offset]: seek to offset in input file before decode\n");
 }
 
@@ -198,6 +241,9 @@ int main(int argc, char *argv[])
                     break;
                 case 'l':
                     enc = Encoding_LZSS;
+                    break;
+                case 'm':
+                    enc = Encoding_BMC;
                     break;
                 case 'o':
                     // not last arg, no more flags
@@ -267,6 +313,13 @@ int main(int argc, char *argv[])
             res = doDecodeLZSS(inFile, outFile) ? 0 : 1;
         else
             res = doEncodeLZSS(inFile, outFile) ? 0 : 1;
+    }
+    else if(enc == Encoding_BMC)
+    {
+        if(decode)
+            res = doDecodeBMC(inFile, outFile) ? 0 : 1;
+        else
+            res = doEncodeBMC(inFile, outFile) ? 0 : 1;
     }
     fclose(inFile);
     fclose(outFile);
