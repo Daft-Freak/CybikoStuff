@@ -9,6 +9,14 @@ add_library(encoding STATIC
     encoding.c
 )
 
+# flash image extractor
+set(FLASHSPLIT_SOURCES
+    flashsplit.c
+)
+
+add_executable(flashsplit ${FLASHSPLIT_SOURCES})
+target_link_libraries(flashsplit encoding)
+
 # boot image encode/decode tool
 set(IMGTOOL_SOURCES
     imgtool.c
