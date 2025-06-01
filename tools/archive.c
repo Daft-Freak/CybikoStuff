@@ -10,6 +10,7 @@ typedef enum Action
 {
     Action_None,
     Action_List,
+    Action_Extract,
 } Action;
 
 typedef struct ArchiveEntry
@@ -84,7 +85,7 @@ uint32_t Archive_getDecompressedSize(Archive *archive, int entryIndex)
     if(compression == 0)
     {
         // uncompressed
-        return entry->size;
+        return entry->size - 1;
     }
     else if(compression == 2)
     {
@@ -95,7 +96,47 @@ uint32_t Archive_getDecompressedSize(Archive *archive, int entryIndex)
     }
 
     return 0;
-    
+}
+
+uint8_t *Archive_readEntry(Archive *archive, int entryIndex)
+{
+    ArchiveEntry *entry = archive->entries + entryIndex;
+
+    fseek(archive->file, entry->offset, SEEK_SET);
+
+    int compression = fgetc(archive->file);
+
+    uint8_t *ret = NULL;
+
+    if(compression == 0)
+    {
+        // uncompressed
+        ret = malloc(entry->size - 1);
+        fread(ret, 1, entry->size - 1, archive->file);
+    }
+    // 1 would probably be LZSS if it was supported...
+    else if(compression == 2)
+    {
+        uint8_t bytes[4];
+        fread(bytes, 4, 1, archive->file);
+
+        uint32_t outSize = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+        uint32_t inSize = entry->size - 5;
+
+        // read in file
+        uint8_t *inData = malloc(inSize), *outData = malloc(outSize);
+        fread(inData, 1, inSize, archive->file);
+
+        // decode
+        if(decodeBMC(inData, outData, inSize, outSize))
+            ret = outData;
+        else
+            free(outData);
+
+        free(inData);
+    }
+
+    return ret;
 }
 
 void Archive_free(Archive *archive)
@@ -109,6 +150,7 @@ static void usage()
 {
     printf("usage: archive [options] [input file]\n\n");
     printf("\t-l: list entries\n");
+    printf("\t-e: extract entries\n");
 }
 
 int main(int argc, char *argv[])
@@ -130,6 +172,9 @@ int main(int argc, char *argv[])
             {
                 case 'l':
                     action = Action_List;
+                    break;
+                case 'e':
+                    action = Action_Extract;
                     break;
 
                 default:
@@ -173,6 +218,34 @@ int main(int argc, char *argv[])
                 ArchiveEntry *entry = archive.entries + i;
                 uint32_t decompressedSize = Archive_getDecompressedSize(&archive, i);
                 printf("entry %2i size %6i (decompressed %6i) offset %6i name %s\n", i, entry->size, decompressedSize, entry->offset, entry->name);
+            }
+            break;
+
+        case Action_Extract:
+            // extract entries
+            for(int i = 0; i < archive.numEntries; i++)
+            {
+                ArchiveEntry *entry = archive.entries + i;
+                uint8_t *data = Archive_readEntry(&archive, i);
+
+                if(data)
+                {
+                    FILE *outFile = fopen(entry->name, "wb");
+                    if(outFile)
+                    {
+                        printf("writing %s\n", entry->name);
+                        fwrite(data, 1, Archive_getDecompressedSize(&archive, i), outFile);
+                        fclose(outFile);
+                    }
+                    else
+                        fprintf(stderr, "Failed to open %s!\n", entry->name);
+                    free(data);
+                }
+                else
+                {
+                    fprintf(stderr, "Failed to extract %s!\n", entry->name);
+                    res = 1;
+                }
             }
             break;
 
