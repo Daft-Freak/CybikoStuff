@@ -6,6 +6,12 @@
 
 #include "encoding.h"
 
+typedef enum Action
+{
+    Action_None,
+    Action_List,
+} Action;
+
 typedef struct ArchiveEntry
 {
     const char *name;
@@ -26,11 +32,6 @@ static uint32_t readShort(FILE *file)
     fread(bytes, 2, 1, file);
 
     return (bytes[0] << 8) | bytes[1];
-}
-
-static void usage()
-{
-    printf("usage: archive [options] [input file]\n\n");
 }
 
 bool Archive_init(Archive *archive, FILE *file)
@@ -104,8 +105,16 @@ void Archive_free(Archive *archive)
     free(archive->entries);
 }
 
+static void usage()
+{
+    printf("usage: archive [options] [input file]\n\n");
+    printf("\t-l: list entries\n");
+}
+
 int main(int argc, char *argv[])
 {
+    Action action = Action_None;
+
     // parse arguments
     int i = 1;
     for(; i < argc; i++)
@@ -119,6 +128,10 @@ int main(int argc, char *argv[])
         {
             switch(flags[j])
             {
+                case 'l':
+                    action = Action_List;
+                    break;
+
                 default:
                     printf("Invalid flag: %c\n", argv[i][j]);
                     usage();
@@ -151,13 +164,22 @@ int main(int argc, char *argv[])
 
     int res = 0;
 
-    // list entries
-    for(int i = 0; i < archive.numEntries; i++)
+    switch(action)
     {
-        ArchiveEntry *entry = archive.entries + i;
-        uint32_t decompressedSize = Archive_getDecompressedSize(&archive, i);
-        printf("entry %2i size %6i (decompressed %6i) offset %6i name %s\n", i, entry->size, decompressedSize, entry->offset, entry->name);
+        case Action_List:
+            // list entries
+            for(int i = 0; i < archive.numEntries; i++)
+            {
+                ArchiveEntry *entry = archive.entries + i;
+                uint32_t decompressedSize = Archive_getDecompressedSize(&archive, i);
+                printf("entry %2i size %6i (decompressed %6i) offset %6i name %s\n", i, entry->size, decompressedSize, entry->offset, entry->name);
+            }
+            break;
+
+        default:
+            printf("Nothing to do!\n");
     }
+
 
     Archive_free(&archive);
 
