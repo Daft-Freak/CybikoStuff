@@ -9,6 +9,14 @@ add_library(encoding STATIC
     encoding.c
 )
 
+# archive tool
+set(ARCHIVE_SOURCES
+    archive.c
+)
+
+add_executable(archive ${ARCHIVE_SOURCES})
+target_link_libraries(archive encoding)
+
 # flash image extractor
 set(FLASHSPLIT_SOURCES
     flashsplit.c
