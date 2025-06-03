@@ -11,6 +11,7 @@ typedef enum Action
     Action_None,
     Action_List,
     Action_Extract,
+    Action_ExecutableInfo,
 } Action;
 
 typedef struct ArchiveEntry
@@ -146,11 +147,111 @@ void Archive_free(Archive *archive)
     free(archive->entries);
 }
 
+static bool printExecutableInfo(uint8_t *exeData)
+{
+    uint16_t magic1 = exeData[0] << 8 | exeData[1];
+    uint16_t magic2 = exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    // not sure the first one is actually checked, but the second one is
+    if(magic1 != 0x91AF || magic2 < 2)
+    {
+        printf("expected 91AF 0002 got %04X %04X\n", magic1, magic2);
+        return false;
+    }
+
+    uint32_t imageSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t extraSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t exportsSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t importsSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t relocsSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t entryOffset = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t ctorsOffset = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t ctorsSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t dtorsOffset = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    uint32_t dtorsSize = exeData[0] << 24 | exeData[1] << 16 | exeData[2] << 8 | exeData[3];
+    exeData += 4;
+
+    // parse imports
+    char *importsData = (char *)exeData + imageSize;
+    char *importsEnd = importsData + importsSize;
+
+    int numImports = 0;
+    for(char *p = importsData; p != importsEnd; p += strlen(p) + 1)
+        numImports++;
+
+    char **imports = malloc(numImports * sizeof(char *));
+    int i = 0;
+    for(char *p = importsData; p != importsEnd; p += strlen(p) + 1, i++)
+    {
+        imports[i] = p;
+        // rename ordinals to OS
+        if(strcmp(imports[i], "ordinals") == 0)
+            imports[i] = "OS";
+    }
+
+    printf("Image size %i bytes (+%i)\n", imageSize, extraSize);
+    printf("Exports %i symbols\n", exportsSize / 4);
+    printf("Imports from %i modules\n", numImports);
+
+    for(int i = 0; i < numImports; i++)
+        printf("\t%s\n", imports[i]);
+
+    printf("Entry at offset %x, %i ctors at %x, %i dtors at %x\n", entryOffset, ctorsSize / 4, ctorsOffset, dtorsSize / 4, dtorsOffset);
+
+    printf("%i relocations\n", relocsSize / 4);
+    uint8_t *image = exeData;
+    uint8_t *relocs = exeData + imageSize + importsSize;
+    uint8_t *relocsEnd = relocs + relocsSize;
+
+    for(uint8_t *p = relocs; p != relocsEnd; p += 4)
+    {
+        uint32_t reloc = p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3];
+        uint32_t offset = reloc & 0xFFFFFF;
+
+        // import
+        if(reloc & 0x80000000)
+        {
+            uint32_t code = image[offset] << 24 | image[offset + 1] << 16 | image[offset + 2] << 8 | image[offset + 3];
+            int index = code & 0x1FFF;
+            int moduleIndex = (reloc >> 24) & 0x7F;
+            printf("\t%s index %i at %06X\n", imports[moduleIndex], index, offset);
+        }
+        else // self
+            printf("\tself at %06X\n", offset);
+    }
+
+    printf("\n");
+
+    free(imports);
+
+    return true;
+}
+
 static void usage()
 {
     printf("usage: archive [options] [input file]\n\n");
     printf("\t-l: list entries\n");
     printf("\t-e: extract entries\n");
+    printf("\t-i: display info about executables\n");
 }
 
 int main(int argc, char *argv[])
@@ -175,6 +276,9 @@ int main(int argc, char *argv[])
                     break;
                 case 'e':
                     action = Action_Extract;
+                    break;
+                case 'i': // 'e' was taken
+                    action = Action_ExecutableInfo;
                     break;
 
                 default:
@@ -245,6 +349,30 @@ int main(int argc, char *argv[])
                 {
                     fprintf(stderr, "Failed to extract %s!\n", entry->name);
                     res = 1;
+                }
+            }
+            break;
+
+        case Action_ExecutableInfo:
+            // extract entries
+            for(int i = 0; i < archive.numEntries; i++)
+            {
+                ArchiveEntry *entry = archive.entries + i;
+                int nameLen = strlen(entry->name);
+                bool isExecutable = nameLen > 2 && entry->name[nameLen - 2] == '.' && entry->name[nameLen - 1] == 'e';
+
+                if(isExecutable)
+                {
+                    printf("%s:\n", entry->name);
+                    uint8_t *data = Archive_readEntry(&archive, i);
+                    if(data)
+                    {
+                        if(!printExecutableInfo(data))
+                            res = 1;
+                        free(data);
+                    }
+                    else
+                        res = 1;
                 }
             }
             break;
