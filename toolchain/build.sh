@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-BINUTILS_VERSION=binutils-2.37
-GCC_VERSION=gcc-8.5.0
-NEWLIB_VERSION=newlib-4.1.0
+BINUTILS_VERSION=binutils-2.45.1
+GCC_VERSION=gcc-16.1.0
+NEWLIB_VERSION=newlib-4.6.0.20260123
 
 JOBS=$(nproc --all)
 PREFIX=$PWD/prefix
