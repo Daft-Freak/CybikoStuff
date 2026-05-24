@@ -23,3 +23,13 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+# setup library for crt0/linker script
+if(NOT TARGET cybiko_crt0)
+    add_library(cybiko_crt0 INTERFACE)
+    target_sources(cybiko_crt0 INTERFACE ${CRT0})
+    target_link_options(cybiko_crt0 INTERFACE "LINKER:--script=${LINKER_SCRIPT}")
+    target_link_options(cybiko_crt0 INTERFACE "-nostartfiles")
+    set_target_properties(cybiko_crt0 PROPERTIES INTERFACE_LINK_DEPENDS ${LINKER_SCRIPT})
+endif()
+

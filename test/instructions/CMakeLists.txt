@@ -9,7 +9,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_subdirectory(../../lib lib)
 
 set(SOURCES
-    ${CRT0}
     Main.cpp
 
     ADD.cpp # also ADDX, ADDS
@@ -40,8 +39,6 @@ string(REPLACE "-mrelax" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
 
 add_executable(InstructionTest ${SOURCES})
 
-target_link_libraries(InstructionTest H8)
-target_link_options(InstructionTest PRIVATE -T ${LINKER_SCRIPT} -nostartfiles)
-set_target_properties(InstructionTest PROPERTIES LINK_DEPENDS ${LINKER_SCRIPT})
+target_link_libraries(InstructionTest cybiko_crt0 H8)
 
 make_bootable(InstructionTest)
