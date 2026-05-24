@@ -11,7 +11,13 @@ unsigned long testData[4];
 
 void writeString(const char *str)
 {
+#ifdef CYBIKO_XTREME
+    // this is the port than can be used to boot (exposed on cartridge connector)
     sci1Write(reinterpret_cast<const uint8_t *>(str), strlen(str));
+#else
+    // main serial port
+    sci2Write(reinterpret_cast<const uint8_t *>(str), strlen(str));
+#endif
 }
 
 void dumpRegs(long er[8])
