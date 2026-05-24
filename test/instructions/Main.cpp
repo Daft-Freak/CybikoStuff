@@ -7,7 +7,7 @@
 
 // in external ram, so 32bit address required
 unsigned long testData[4];
-unsigned long stackTestData[4] [[gnu::section(".stack")]]; // the stack is in on-chip ram, which can be accessed with a 16-bit address
+[[gnu::section(".stack")]] unsigned long stackTestData[4]; // the stack is in on-chip ram, which can be accessed with a 16-bit address
 
 void writeString(const char *str)
 {
