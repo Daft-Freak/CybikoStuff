@@ -1,0 +1,6 @@
+set(LINKER_SCRIPT "${CMAKE_CURRENT_LIST_DIR}/classic-v2-ram.ld")
+
+include(${CMAKE_CURRENT_LIST_DIR}/common.toolchain)
+
+add_definitions(-DCYBIKO_CLASSIC_V2)
+set(CYBIKO_CLASSIC_V2 1)
