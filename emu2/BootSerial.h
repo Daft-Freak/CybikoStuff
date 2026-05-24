@@ -77,7 +77,7 @@ private:
     std::stringstream logBuffer;
 
     // port also connected to SD card
-    bool sdMode;
+    bool sdMode = false;
     SDCard sd;
 
     // for booting a file
