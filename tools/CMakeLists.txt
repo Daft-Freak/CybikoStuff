@@ -42,6 +42,7 @@ if(PKG_CONFIG_FOUND)
 endif()
 
 if(PKG_LIBUSB_FOUND)
+    message("Found libusb, building usbcon")
     set(USBCON_SOURCES
         usbcon.c
     )
@@ -49,4 +50,19 @@ if(PKG_LIBUSB_FOUND)
     add_executable(usbcon ${USBCON_SOURCES})
     target_include_directories(usbcon PRIVATE ${PKG_LIBUSB_INCLUDE_DIRS})
     target_link_libraries(usbcon encoding ${PKG_LIBUSB_LIBRARIES})
+endif()
+
+# serial boot/console tool
+find_library(LIBSERIALPORT_LIBRARIES serialport)
+find_path(LIBSERIALPORT_INCLUDE_DIR libserialport.h)
+
+if(LIBSERIALPORT_LIBRARIES AND LIBSERIALPORT_INCLUDE_DIR)
+    message("Found libserialport, building sercon")
+    set(SERCON_SOURCES
+        sercon.c
+    )
+
+    add_executable(sercon ${SERCON_SOURCES})
+    target_include_directories(sercon PRIVATE ${LIBSERIALPORT_INCLUDE_DIR})
+    target_link_libraries(sercon encoding ${LIBSERIALPORT_LIBRARIES})
 endif()
