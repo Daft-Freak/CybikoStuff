@@ -1,3 +1,5 @@
+#include <stdbool.h>
+
 #include "crc.h"
 
 uint32_t crc16(uint8_t *data, int length)
