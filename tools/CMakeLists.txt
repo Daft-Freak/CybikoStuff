@@ -6,6 +6,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
 
 # shared encoding code
 add_library(encoding STATIC
+    crc.c
     encoding.c
 )
 

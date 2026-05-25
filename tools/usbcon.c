@@ -8,55 +8,13 @@
 #include <libusb.h>
 
 #include "encoding.h"
+#include "crc.h"
 
 #define min(a, b) ((a < b) ? a : b)
 
 #define CYBIKO_VID 0x0b66
 #define CYBIKO_BOOTLOADER_PID 0x0040
 #define CYBIKO_CYOS_PID 0x0041
-
-
-// crc calc
-static uint32_t crc32(uint8_t *data, int length)
-{
-    uint32_t crc = 0xFFFFFFFF;
-
-    for(int i = 0; i < length; i++)
-    {
-        crc ^= data[i];
-        for(int j = 0; j < 8; j++)
-        {
-            bool bit = crc & 1;
-            crc >>= 1;
-
-            if(bit)
-                crc ^= 0xEDB88320;
-        }
-    }
-
-    return crc;
-}
-
-
-static uint32_t crc16(uint8_t *data, int length)
-{
-    uint16_t crc = 0xFFFF;
-
-    for(int i = 0; i < length; i++)
-    {
-        crc ^= data[i];
-        for(int j = 0; j < 8; j++)
-        {
-            bool bit = crc & 1;
-            crc >>= 1;
-
-            if(bit)
-                crc ^= 0xA001;
-        }
-    }
-
-    return crc;
-}
 
 // usb helpers
 static bool getDeviceId(libusb_device *device, libusb_device_handle *handle, unsigned char *data, int length)
