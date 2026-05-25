@@ -17,14 +17,13 @@
 
 
 // crc calc
-static uint32_t crc32Table[256] = {0};
-static uint16_t crc16Table[256] = {0};
-
-static void initCRCTables()
+static uint32_t crc32(uint8_t *data, int length)
 {
-    for(int i = 0; i < 256; i++)
+    uint32_t crc = 0xFFFFFFFF;
+
+    for(int i = 0; i < length; i++)
     {
-        uint32_t crc = i;
+        crc ^= data[i];
         for(int j = 0; j < 8; j++)
         {
             bool bit = crc & 1;
@@ -33,13 +32,19 @@ static void initCRCTables()
             if(bit)
                 crc ^= 0xEDB88320;
         }
-
-        crc32Table[i] = crc;
     }
 
-    for(int i = 0; i < 256; i++)
+    return crc;
+}
+
+
+static uint32_t crc16(uint8_t *data, int length)
+{
+    uint16_t crc = 0xFFFF;
+
+    for(int i = 0; i < length; i++)
     {
-        uint16_t crc = i;
+        crc ^= data[i];
         for(int j = 0; j < 8; j++)
         {
             bool bit = crc & 1;
@@ -48,32 +53,6 @@ static void initCRCTables()
             if(bit)
                 crc ^= 0xA001;
         }
-
-        crc16Table[i] = crc;
-    }
-}
-
-static uint32_t crc32(uint8_t *data, int length)
-{
-    uint32_t crc = 0xFFFFFFFF;
-
-    for(int i = 0; i < length; i++)
-    {
-        uint8_t v = (crc & 0xFF) ^ data[i];
-        crc = (crc >> 8) ^ crc32Table[v];
-    }
-
-    return crc;
-}
-
-static uint32_t crc16(uint8_t *data, int length)
-{
-    uint16_t crc = 0xFFFF;
-
-    for(int i = 0; i < length; i++)
-    {
-        uint8_t v = (crc & 0xFF) ^ data[i];
-        crc = (crc >> 8) ^ crc16Table[v];
     }
 
     return crc;
@@ -804,8 +783,6 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to init libusb(%i)\n", err);
         return 1;
     }
-
-    initCRCTables();
 
     if(bootFile)
     {
