@@ -2,6 +2,7 @@
 add_library(H8 INTERFACE)
 
 target_sources(H8 INTERFACE
+    LCDDriver.cpp
     Serial.cpp
 )
 
