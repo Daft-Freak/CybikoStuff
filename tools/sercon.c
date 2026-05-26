@@ -177,9 +177,7 @@ static void bootDevice(struct sp_port *port, const char *filename)
         return;
     }
 
-    uint32_t checksum = ~crc32(fileData, size);
-
-    printf("Attempting to boot %s (size: %li, checksum: %08X)\n", filename, size, checksum);
+    printf("Attempting to boot %s (size: %li)\n", filename, size);
     
     // wait for prepare message
     const char *loadMessage = "Preparing to load CyOS\r\n";
