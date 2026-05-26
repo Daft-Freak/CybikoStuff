@@ -83,7 +83,7 @@ static bool waitOSConsoleReady(struct sp_port *port, bool output)
 }
 
 // `cmd` includes newline
-static bool sendCyOSCommand(struct sp_port *port, const char *cmd, int len)
+static bool sendCyOSCommand(struct sp_port *port, const char *cmd, int len, bool checkRes)
 {
     // checksum doesn't include newline
     uint16_t checksum = serialChecksum((uint8_t *)cmd, len - 1);
@@ -94,6 +94,9 @@ static bool sendCyOSCommand(struct sp_port *port, const char *cmd, int len)
     buf[0] = checksum & 0xFF;
     buf[1] = checksum >> 8;
     sp_blocking_write(port, buf, 2, 0);
+
+    if(!checkRes)
+        return true;
 
     // read response
     sp_blocking_read(port, buf, 1, 1000);
@@ -129,7 +132,7 @@ static void serialConsole(struct sp_port *port)
         int len = getline(&line, &size, stdin);
         if(len != -1)
         {
-            if(!sendCyOSCommand(port, line, len))
+            if(!sendCyOSCommand(port, line, len, true))
                 break;
 
             if(!waitOSConsoleReady(port, true))
@@ -147,6 +150,80 @@ static void usage()
     printf("\t-b: boot file\n");
     printf("\t-s: send file\n");
     printf("\t-d: dest name for file (defaults to source name)\n");
+}
+
+static bool sendFileData(struct sp_port *port, const char *destName, long size, uint8_t *fileData, bool isBoot)
+{
+    char buf[1024];
+
+    // send initial command
+    int len = snprintf(buf, sizeof(buf), "rcv %s %li\n", destName, size);
+
+    // boot files use the same format, but the checksum is ignored
+    // also there is no response
+    sendCyOSCommand(port, buf, len, !isBoot);
+
+    // read lines and wait for "send"
+    while(true)
+    {
+        int len = serialReadLine(port, buf, sizeof(buf));
+
+        if(len > 0)
+        {
+            if(memcmp(buf, "send", 4) == 0)
+            {
+                // send a chunk
+
+                int chunkIndex = atoi(buf + 4);
+                const int maxChunkSize = 512;
+
+                int chunkSize = maxChunkSize;
+                int chunkOff = chunkIndex * maxChunkSize;
+
+                // check the chunk is in bounds
+                if(chunkIndex < 0 || chunkOff >= size)
+                {
+                    fprintf(stderr, "Invalid chunk index (%i)!\n", chunkIndex);
+                    return false;
+                }
+
+                // clamp last chunk
+                if((chunkIndex + 1) * maxChunkSize > size)
+                    chunkSize = size - chunkOff;
+
+                printf("Sending %i/%li\r", chunkOff, size);
+
+                buf[0] = 'C';
+                buf[1] = chunkIndex & 0xFF;
+                buf[2] = chunkIndex >> 8;
+                buf[3] = chunkSize & 0xFF;
+                buf[4] = chunkSize >> 8;
+
+                memcpy(buf + 5, fileData + chunkOff, chunkSize);
+
+                uint32_t crc = ~crc32((uint8_t *)buf + 1, chunkSize + 4);
+
+                buf[chunkSize + 5] = (crc >>  0) & 0xFF;
+                buf[chunkSize + 6] = (crc >>  8) & 0xFF;
+                buf[chunkSize + 7] = (crc >> 16) & 0xFF;
+                buf[chunkSize + 8] = (crc >> 24) & 0xFF;
+
+                if(sp_blocking_write(port, buf, chunkSize + 9, 0) < 0)
+                    fprintf(stderr, "Failed to send file chunk %i\n", chunkIndex);
+            }
+            else if(memcmp(buf, "done", 4) == 0 || memcmp(buf, "Ready >", 7) == 0)
+                return true;
+            else if(len > 2 || buf[0] != '\r')
+            {
+                printf("\nreceived (%i): %.*s", len, len, buf);
+            }
+        }
+        else if(len < 0)
+        {
+            fprintf(stderr, "Failed reading rcv output!\n");
+            return false;
+        }
+    }
 }
 
 static void bootDevice(struct sp_port *port, const char *filename)
@@ -194,85 +271,50 @@ static void bootDevice(struct sp_port *port, const char *filename)
         }
         else if(len < 0)
         {
-            fprintf(stdout, "Failed waiting for load message!\n");
+            fprintf(stderr, "Failed waiting for load message!\n");
             return;
         }
     }
 
-    // send initial command
-    int len = snprintf(buf, sizeof(buf), "rcv file.boot %li\n", size);
-
-    if(sp_blocking_write(port, buf, len, 0) < 0)
+    // send rcv command
+    if(!sendFileData(port, "file.boot", size, fileData, true))
     {
-        fprintf(stderr, "Failed to send boot command\n");
-        free(fileData);
+        fprintf(stderr, "Sending boot file failed!\n");
+    }
+
+    free(fileData);
+}
+
+static void sendFile(struct sp_port *port, const char *localName, const char *deviceName)
+{
+    if(!checkOSConsole(port, 10000))
+    {
+        fprintf(stderr, "OS console does not appear to be running.\n");
         return;
     }
 
-    // ignored checksum
-    buf[0] = buf[1] = 0;
-    sp_blocking_write(port, buf, 2, 0);
+    waitOSConsoleReady(port, false);
 
-    // read lines and wait for "send"
-    while(true)
+    FILE *f = fopen(localName, "rb");
+    if(!f)
     {
-        int len = serialReadLine(port, buf, sizeof(buf));
+        fprintf(stderr, "Failed to open %s!\n", localName);
+        return;
+    }
 
-        if(len > 0)
-        {
-            if(memcmp(buf, "send", 4) == 0)
-            {
-                // send a chunk
+    // read file;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
 
-                int chunkIndex = atoi(buf + 4);
-                const int maxChunkSize = 512;
+    uint8_t *fileData = malloc(size);
+    fread(fileData, 1, size, f);
+    fclose(f);
 
-                int chunkSize = maxChunkSize;
-                int chunkOff = chunkIndex * maxChunkSize;
-
-                // check the chunk is in bounds
-                if(chunkIndex < 0 || chunkOff >= size)
-                {
-                    fprintf(stdout, "Invalid chunk index (%i)!\n", chunkIndex);
-                    break;
-                }
-
-                // clamp last chunk
-                if((chunkIndex + 1) * maxChunkSize > size)
-                    chunkSize = size - chunkOff;
-
-                printf("Sending %i/%li\r", chunkOff, size);
-
-                buf[0] = 'C';
-                buf[1] = chunkIndex & 0xFF;
-                buf[2] = chunkIndex >> 8;
-                buf[3] = chunkSize & 0xFF;
-                buf[4] = chunkSize >> 8;
-
-                memcpy(buf + 5, fileData + chunkOff, chunkSize);
-
-                uint32_t crc = ~crc32((uint8_t *)buf + 1, chunkSize + 4);
-
-                buf[chunkSize + 5] = (crc >>  0) & 0xFF;
-                buf[chunkSize + 6] = (crc >>  8) & 0xFF;
-                buf[chunkSize + 7] = (crc >> 16) & 0xFF;
-                buf[chunkSize + 8] = (crc >> 24) & 0xFF;
-
-                if(sp_blocking_write(port, buf, chunkSize + 9, 0) < 0)
-                    fprintf(stderr, "Failed to send boot file chunk %i\n", chunkIndex);
-            }
-            else if(memcmp(buf, "done", 4) == 0)
-                break;
-            else if(len > 2 || buf[0] != '\r')
-            {
-                printf("\nreceived (%i): %.*s", len, len, buf);
-            }
-        }
-        else if(len < 0)
-        {
-            fprintf(stdout, "Failed reading boot output!\n");
-            break;
-        }
+    // send rcv command
+    if(!sendFileData(port, deviceName, size, fileData, false))
+    {
+        fprintf(stderr, "Sending file failed!\n");
     }
 
     free(fileData);
@@ -371,14 +413,14 @@ int main(int argc, char *argv[])
         {
             printf("Attempting reboot...\n");
             waitOSConsoleReady(port, false);
-            sendCyOSCommand(port, "reboot\n", 7);
+            sendCyOSCommand(port, "reboot\n", 7, true);
         }
 
         bootDevice(port, bootFile);
     }
     else if(sendFilename)
     {
-        // TODO
+        sendFile(port, sendFilename, dstName ? dstName : sendFilename);
     }
     else
     {
