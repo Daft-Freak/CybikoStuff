@@ -9,6 +9,10 @@ if(NOT DEFINED LIB_ONCE)
             COMMAND ${CMAKE_OBJCOPY} -O binary $<TARGET_FILE:${TARGET}> $<TARGET_FILE:${TARGET}>.boot
         )
 
-        add_custom_target(${TARGET}.boot DEPENDS ${TARGET} COMMAND ${TOOLS_PATH}/usbcon -b ${TARGET}.boot)
+        if(CYBIKO_XTREME)
+            add_custom_target(${TARGET}.boot DEPENDS ${TARGET} COMMAND ${TOOLS_PATH}/usbcon -b ${TARGET}.boot)
+        elseif(CYBIKO_SERIAL_PORT)
+            add_custom_target(${TARGET}.boot DEPENDS ${TARGET} COMMAND ${TOOLS_PATH}/sercon -p ${CYBIKO_SERIAL_PORT} -b ${TARGET}.boot)
+        endif()
     endfunction()
 endif()
