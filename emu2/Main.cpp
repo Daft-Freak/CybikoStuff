@@ -338,10 +338,6 @@ int main(int argc, char *args[])
         if(persistExtRAM)
             extRAM->loadFile((deviceDataPath + "exram.bin").c_str());
 
-        // can still boot over serial
-        if(!serialBootFile.empty())
-            static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
-
         if(usbip)
             usb->startEnumeration();
     }
@@ -390,6 +386,10 @@ int main(int argc, char *args[])
             serialFlash->loadFile((dataPath + "emu_flash.bin").c_str());
         flash->loadFile((dataPath + "emu_cyos.bin").c_str());
     }
+
+    // even xtreme can still boot over serial
+    if(!serialBootFile.empty())
+        static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
 
     // change id for fun
     if(xtreme)
