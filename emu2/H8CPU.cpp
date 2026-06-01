@@ -2090,7 +2090,7 @@ void H8CPU::Serial::update(H8CPU &cpu)
                 // keep going anyway if rx-only sync
                 if((control & SCR_RE) && !(control & SCR_TE) && (mode & SMR_CA))
                 {
-                    if(device && device->canRead())
+                    if(device)
                         doRX(cpu);
 
                     txCycles = cyclesPerChar;
