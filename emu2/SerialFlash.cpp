@@ -7,9 +7,13 @@
 uint8_t SerialFlash::read()
 {
     didWrite = false;
+
+    // supported density values
+    // 3: 2048 * 264
+    // 4: 4096 * 264
+    // 5: 4096 * 528
     if(outputStatus)
-        //return 0xA8; // ready (bit 7) | density (bits 5-3 / 101) // larger flash (528 byte blocks)
-        return 0x98; // ready (bit 7) density (bits 5-3 / 011)
+        return 1 << 7 | (3 << 3); // ready (bit 7), density (bits 5-3)
 
     // need to start responses the byte after reading the command, not on the last byte of the command
     if(wait)
