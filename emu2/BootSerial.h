@@ -66,6 +66,8 @@ public:
 
     void setBootFile(std::string filename);
 
+    void attachPort(std::string path);
+
     SDCard &getSD() {return sd;}
 
 private:
@@ -87,6 +89,8 @@ private:
     int bootBufLen = 0, bootBufOff = 0;
 
     std::ifstream bootFile;
+
+    int fd = -1;
 };
 
 #endif

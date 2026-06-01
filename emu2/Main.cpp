@@ -237,6 +237,7 @@ int main(int argc, char *args[])
     bool xtreme = true;
     bool persistExtRAM = true;
     std::string serialBootFile;
+    std::string serialPortFile;
     std::string cyIDStr = "FAKECYB";
     bool usbip = false;
     bool mp3SD = false;
@@ -250,6 +251,8 @@ int main(int argc, char *args[])
 
         if(arg == "--boot" && i + 1 < argc)
             serialBootFile = args[++i];
+        else if(arg == "--attach-serial" && i + 1 < argc)
+            serialPortFile = args[++i];
         else if(arg == "--benchmark-time" && i + 1 < argc)
         {
             benchmarkMode = true;
@@ -390,6 +393,8 @@ int main(int argc, char *args[])
     // even xtreme can still boot over serial
     if(!serialBootFile.empty())
         static_cast<BootSerial *>(bootSerial.get())->setBootFile(serialBootFile);
+    if(!serialPortFile.empty())
+        static_cast<BootSerial *>(bootSerial.get())->attachPort(serialPortFile);
 
     // change id for fun
     if(xtreme)

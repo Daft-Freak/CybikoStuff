@@ -1,3 +1,8 @@
+#include <cstdio>
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
+
 #include <filesystem>
 #include <iostream>
 
@@ -222,6 +227,14 @@ uint8_t BootSerial::read()
     if(gotPrepareMsg && bootBufOff < bootBufLen)
         return bootBuf[bootBufOff++];
 
+    if(fd != -1)
+    {
+        uint8_t b = 0xFF;
+        ::read(fd, &b, 1);
+
+        return b;
+    }
+
     return 0xFF;
 }
 
@@ -229,6 +242,8 @@ void BootSerial::write(uint8_t val)
 {
     if(sdMode)
         sd.write(val);
+    else if(fd != -1)
+        ::write(fd, &val, 1);
     else
     {
         // buffer/print (has boot messages)
@@ -291,6 +306,18 @@ bool BootSerial::canRead()
     if(gotPrepareMsg && bootBufOff < bootBufLen)
         return true;
 
+    if(fd != -1)
+    {
+        // check fd
+        pollfd pollFd;
+        pollFd.fd = fd;
+        pollFd.events = POLLIN;
+
+        int ready = poll(&pollFd, 1, 0);
+
+        return ready && (pollFd.revents & POLLIN);
+    }
+
     return false;
 }
 
@@ -311,6 +338,19 @@ void BootSerial::setBootFile(std::string filename)
     // doesn't seem to matter...
     bootBuf[bootBufLen++] = crcVal & 0xFF;
     bootBuf[bootBufLen++] = crcVal >> 8;
+}
+
+void BootSerial::attachPort(std::string path)
+{
+    fd = open(path.c_str(), O_RDWR);
+
+    if(fd == -1)
+    {
+        std::cerr << "Failed to open " << path << "\n";
+        return;
+    }
+
+    fcntl(fd, F_SETFL, O_NONBLOCK);
 }
 
 uint16_t BootSerial::crc(uint8_t *data, int length)
