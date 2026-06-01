@@ -377,8 +377,7 @@ int main(int argc, char *args[])
         cpu.addIODevice(IOPort::F, classicPortF.get());
 
         // load rom/flash dumps
-        // (These are from the "C4PC system pack")
-        if(!cpu.loadROM((dataPath + "emu_rom.bin").c_str()))
+        if(!cpu.loadROM((dataPath + "classic-rom.bin").c_str()))
         {
             std::cerr << "Failed to load ROM!\n";
             return 1;
@@ -386,8 +385,8 @@ int main(int argc, char *args[])
 
         // try to load updated file first, fallback to base flash
         if(!serialFlash->loadFile((dataPath + "classic-flash-persist.bin").c_str()))
-            serialFlash->loadFile((dataPath + "emu_flash.bin").c_str());
-        flash->loadFile((dataPath + "emu_cyos.bin").c_str());
+            serialFlash->loadFile((dataPath + "classic-flash.bin").c_str());
+        flash->loadFile((dataPath + "classic-cyos.bin").c_str());
     }
 
     // even xtreme can still boot over serial
