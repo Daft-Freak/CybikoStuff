@@ -177,6 +177,8 @@ static void setXtremeBatteryLevel(H8CPU &cpu, std::unique_ptr<MemoryDevice> &ext
     // these header blocks only have 250 bytes of data instead of 256
     // the data we want is in a 150 byte block (with a crc32) 100 bytes inside the filesystem block
 
+    // (there's a similar thing 108 bytes into the 264 byte blocks in the classic flash)
+
     // we're going to modify the header to say the battery was last full right now
 
     uint32_t batLevel = 0x2673C0;
@@ -346,7 +348,7 @@ int main(int argc, char *args[])
     }
     else
     {
-        // this is a bit less stable as I don't actually have one
+        // this is a bit wrong as I mostly have xtremes
 
         flash = std::make_unique<MemoryDevice>(0x3FFFF);
         keyboard = std::make_unique<ClassicKeyboardDevice>();
@@ -354,6 +356,7 @@ int main(int argc, char *args[])
         rtc = std::make_unique<PCF8593>(0, 1);
 
         cpu.setExternalArea(0, flash.get());
+        // should be 256K
         cpu.setExternalArea(1, extRAM.get()); //external ram
         cpu.setExternalArea(3, lcd.get()); //lcd
         cpu.setExternalArea(7, keyboard.get()); // keyboard
