@@ -132,7 +132,7 @@ void RFSerial::write(uint8_t val)
             uint16_t headCRC = (packetBuf[14] << 8) | packetBuf[15];
             int headLen = 16;
             int dataLen = longPkt ? 104 : 14;
-            int footLen = longPkt ? 80 : 20;
+            int eccLen = longPkt ? 80 : 20;
 
             auto srcAddrStr = cyIDToString(srcAddr);
             auto dstAddrStr = cyIDToString(dstAddr);
@@ -148,10 +148,10 @@ void RFSerial::write(uint8_t val)
             }
             printf("\n");
 
-            // this is calculated from the data somehow
-            printf("\tfoot:");
+            // reed-solomon error correction
+            printf("\tecc: ");
 
-            for(int i = 0; i < footLen; i++)
+            for(int i = 0; i < eccLen; i++)
             {
                 bool newline = i > 0 && i % 16 == 0;
                 printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
@@ -164,13 +164,13 @@ void RFSerial::write(uint8_t val)
             // forward to network
             if(sendFd != -1)
             {
-                size_t bufSize = headLen + dataLen + footLen + 8;
+                size_t bufSize = headLen + dataLen + eccLen + 8;
                 auto outBuf = new uint8_t[bufSize];
                 // extra prefix
                 outBuf[0] = outBuf[1] = outBuf[2] = outBuf[3] = outBuf[4] = outBuf[5] = 0xAA;
                 outBuf[6] = 0;
                 outBuf[7] = longPkt ? 0xC8 : 0x32;
-                memcpy(outBuf + 8, packetBuf, headLen + dataLen + footLen);
+                memcpy(outBuf + 8, packetBuf, headLen + dataLen + eccLen);
 
                 sendto(sendFd, outBuf, bufSize, 0, (sockaddr *)sendAddr, sizeof(sockaddr_in6));
 
