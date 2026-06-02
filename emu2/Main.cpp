@@ -216,6 +216,19 @@ static void setXtremeBatteryLevel(H8CPU &cpu, std::unique_ptr<MemoryDevice> &ext
     }
 }
 
+static void setXtremeCyID(std::unique_ptr<MemoryDevice> &flash, uint32_t cyID)
+{
+    flash->write(0x7F818, cyID >> 24);
+    flash->write(0x7F819, cyID >> 16);
+    flash->write(0x7F81A, cyID >> 8);
+    flash->write(0x7F81B, cyID);
+    uint32_t crc = ~crc32(flash->getData() + 0x7F800, 0x7FC);
+    flash->write(0x7FFFC, crc >> 24);
+    flash->write(0x7FFFD, crc >> 16);
+    flash->write(0x7FFFE, crc >> 8);
+    flash->write(0x7FFFF, crc);
+}
+
 int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
@@ -400,19 +413,7 @@ int main(int argc, char *args[])
 
     // change id for fun
     if(xtreme)
-    {
-        uint32_t cyID = cyIDFromString(cyIDStr);
-
-        flash->write(0x7F818, cyID >> 24);
-        flash->write(0x7F819, cyID >> 16);
-        flash->write(0x7F81A, cyID >> 8);
-        flash->write(0x7F81B, cyID);
-        uint32_t crc = ~crc32(flash->getData() + 0x7F800, 0x7FC);
-        flash->write(0x7FFFC, crc >> 24);
-        flash->write(0x7FFFD, crc >> 16);
-        flash->write(0x7FFFE, crc >> 8);
-        flash->write(0x7FFFF, crc);
-    }
+        setXtremeCyID(flash, cyIDFromString(cyIDStr));
 
 
     cpu.reset();
