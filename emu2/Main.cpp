@@ -229,6 +229,51 @@ static void setXtremeCyID(std::unique_ptr<MemoryDevice> &flash, uint32_t cyID)
     flash->write(0x7FFFF, crc);
 }
 
+static void setClassicCyID(std::unique_ptr<SerialFlash> &serialFlash, uint32_t cyID)
+{
+    // patch the id in cyos.cfg in the filesystem
+    auto fsData = serialFlash->getData();
+
+    // TODO: query block count/size?
+    for(int blockIndex = 5; blockIndex < 2048; blockIndex++)
+    {
+        auto blockData = fsData + blockIndex * 264;
+
+        // check valid bit
+        if(!(blockData[8] & 0x80))
+            continue;
+
+        // ignore unless first block
+        uint16_t fileBlockIndex = blockData[12] << 8 | blockData[13];
+        if(fileBlockIndex > 0)
+            continue; 
+
+        auto name = reinterpret_cast<char *>(blockData + 15);
+        if(memcmp(name, "cyos.cfg",9) == 0)
+        {
+            auto fileData = blockData + 86;
+
+            fileData[2] = cyID >> 24;
+            fileData[3] = cyID >> 16;
+            fileData[4] = cyID >>  8;
+            fileData[5] = cyID;
+
+            // crc
+            auto crc = ~crc32(blockData + 8, 254);
+            blockData[0] = crc >> 24;
+            blockData[1] = crc >> 16;
+            blockData[2] = crc >>  8;
+            blockData[3] = crc;
+
+            // another checksum
+            uint16_t something = blockData[4] << 8 | blockData[5];
+            uint16_t check2 = crc ^ crc >> 16 ^ 0xAF17 ^ something;
+            blockData[6] = check2;
+            blockData[7] = check2 >> 8; // yes, this is the other way around
+        }
+    }
+}
+
 int main(int argc, char *args[])
 {
     static const uint64_t clockFreq = 18432000;
@@ -414,7 +459,8 @@ int main(int argc, char *args[])
     // change id for fun
     if(xtreme)
         setXtremeCyID(flash, cyIDFromString(cyIDStr));
-
+    else
+        setClassicCyID(serialFlash, cyIDFromString(cyIDStr));
 
     cpu.reset();
 
