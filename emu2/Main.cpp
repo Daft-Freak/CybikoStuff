@@ -298,7 +298,7 @@ int main(int argc, char *args[])
     bool persistExtRAM = true;
     std::string serialBootFile;
     std::string serialPortFile;
-    std::string cyIDStr = "FAKECYB";
+    std::string cyIDStr;
     bool usbip = false;
     bool mp3SD = false;
 
@@ -457,6 +457,10 @@ int main(int argc, char *args[])
         static_cast<BootSerial *>(bootSerial.get())->attachPort(serialPortFile);
 
     // change id for fun
+    // default to giving classic/xtreme different ids
+    if(cyIDStr.empty())
+        cyIDStr = xtreme ? "FAKECYB" : "FAKECYA";
+
     if(xtreme)
         setXtremeCyID(flash, cyIDFromString(cyIDStr));
     else
