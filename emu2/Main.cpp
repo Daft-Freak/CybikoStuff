@@ -479,6 +479,13 @@ int main(int argc, char *args[])
             bootSerial->getSD().setFile(deviceDataPath + "sdcard.bin");
         }
     }
+    else
+    {
+        if(usbip)
+            std::cerr << "USBIP not supported on classic (it has no USB port)\n";
+        if(mp3SD)
+            std::cerr << "MP3 player SD card not supported on classic\n";
+    }
 
     //rendering setup
 
