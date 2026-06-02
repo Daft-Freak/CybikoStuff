@@ -124,7 +124,6 @@ void RFSerial::write(uint8_t val)
             auto packetBuf = buf + 2;
             int headLen = 16;
             int dataLen = longPkt ? 104 : 14;
-            int eccLen = longPkt ? 80 : 20;
 
             dumpPacket("", packetBuf, longPkt);
 
@@ -134,13 +133,13 @@ void RFSerial::write(uint8_t val)
             // forward to network
             if(sendFd != -1)
             {
-                size_t bufSize = headLen + dataLen + eccLen + 8;
+                size_t bufSize = headLen + dataLen + 8;
                 auto outBuf = new uint8_t[bufSize];
                 // extra prefix
                 outBuf[0] = outBuf[1] = outBuf[2] = outBuf[3] = outBuf[4] = outBuf[5] = 0xAA;
                 outBuf[6] = 0;
                 outBuf[7] = longPkt ? 0xC8 : 0x32;
-                memcpy(outBuf + 8, packetBuf, headLen + dataLen + eccLen);
+                memcpy(outBuf + 8, packetBuf, headLen + dataLen);
 
                 sendto(sendFd, outBuf, bufSize, 0, (sockaddr *)sendAddr, sizeof(sockaddr_in6));
 
@@ -197,6 +196,11 @@ void RFSerial::networkUpdate()
     if(len > 0)
     {
         bool longPkt = buf[7] == 0xC8;
+
+        // fill in the ECC data
+        eccCalc(buf + 8, longPkt);
+        len += longPkt ? 80 : 20;
+
         dumpPacket(" (from socket)", buf + 8, longPkt);
 
         // blindly forward to cybiko, what could possibly go wrong?
