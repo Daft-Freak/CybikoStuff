@@ -63,6 +63,8 @@ RFSerial::RFSerial()
             sendFd = -1;
         }
     }
+
+    eccInit();
 }
 
 RFSerial::~RFSerial()
@@ -241,4 +243,94 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
         printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
     }
     printf("\n");
+}
+
+void RFSerial::eccInit()
+{
+    // calculate the tables
+
+    int e = 1;
+    for(int i = 0; i < 255; i++)
+    {
+        rsExpTable[i] = e;
+        rsLogTable[e] = i;
+
+        e <<= 1;
+
+        if(e >= 256)
+            e = (e ^ 0x1D) & 0xFF;
+    }
+
+    rsExpTable[255] = 0;
+    rsLogTable[0] = 255;
+
+    auto genPoly = [this](int numRoots, uint8_t *out)
+    {
+        out[0] = 0;
+
+        for(int i = 0; i < numRoots; i++)
+        {
+            int root = i + 1;
+
+            out[i + 1] = 1;
+
+            for(int j = i; j > 0; j--)
+            {
+                if(out[j] != 0)
+                    out[j] = out[j - 1] ^ rsExpTable[rsMod(rsLogTable[out[j]] + root)];
+                else
+                    out[j] = out[j - 1];
+            }
+
+            out[0] = rsExpTable[rsMod(rsLogTable[out[0]] + root)];
+        }
+
+        for(int i = 0; i <= numRoots; i++)
+            out[i] = rsLogTable[out[i]];
+    };
+
+    genPoly(20, rsPoly20);
+    genPoly(80, rsPoly80);
+}
+
+void RFSerial::eccCalc(uint8_t *data, bool longPkt)
+{
+    int dataLen = longPkt ? 120 : 30;
+    int eccLen = longPkt ? 80 : 20;
+    auto poly = longPkt ? rsPoly80 : rsPoly20;
+
+    auto ecc = data + dataLen;
+    memset(ecc, 0, eccLen);
+
+    for(int i = dataLen - 1; i >= 0; i--)
+    {
+        uint8_t b = rsLogTable[ecc[eccLen - 1] ^ data[i]];
+
+        if(b == 0xFF)
+        {
+            for(int j = eccLen - 1; j > 0; j--)
+                ecc[j] = ecc[j - 1];
+
+            ecc[0] = 0;
+        }
+        else
+        {
+            for(int j = eccLen - 1; j > 0; j--)
+                ecc[j] = rsExpTable[rsMod(b + poly[j])] ^ ecc[j - 1];
+
+            ecc[0] = rsExpTable[rsMod(b + poly[0])];
+        }
+    }
+}
+
+// modulo for reed-solomon
+uint8_t RFSerial::rsMod(unsigned v)
+{
+    while(v >= 0xFF)
+    {
+        v -= 0xFF;
+        v = (v & 0xFF) + ((v >> 8) & 0xFF);
+    }
+
+    return v;
 }
