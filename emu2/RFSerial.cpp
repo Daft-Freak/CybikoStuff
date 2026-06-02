@@ -120,43 +120,11 @@ void RFSerial::write(uint8_t val)
             // these are mostly the same other than length
             bool longPkt = buf[0] == 0xCF;
             auto packetBuf = buf + 2;
-
-            uint32_t dstAddr = (packetBuf[0] << 24) | (packetBuf[1] << 16) | (packetBuf[2] << 8) | (packetBuf[3]);
-            uint32_t srcAddr = (packetBuf[4] << 24) | (packetBuf[5] << 16) | (packetBuf[6] << 8) | (packetBuf[7]);
-            int channel = packetBuf[8] & 0x3F; // top bits = 0xC0?
-            uint8_t type = packetBuf[9] >> 5; // ping, message, ack, sys
-            uint8_t flags = packetBuf[9] & 0x1F; // ?  
-            uint8_t index = packetBuf[10]; //?
-            uint8_t unk11 = packetBuf[11];
-            uint16_t dataCRC = (packetBuf[12] << 8) | packetBuf[13];
-            uint16_t headCRC = (packetBuf[14] << 8) | packetBuf[15];
             int headLen = 16;
             int dataLen = longPkt ? 104 : 14;
             int eccLen = longPkt ? 80 : 20;
 
-            auto srcAddrStr = cyIDToString(srcAddr);
-            auto dstAddrStr = cyIDToString(dstAddr);
-
-            printf("RFSerial packet from %08X(@%s) to %08X(@%s) on chan %i\n", srcAddr, srcAddrStr.c_str(), dstAddr, dstAddrStr.c_str(), channel);
-            printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
-            printf("\tdata:");
-
-            for(int i = 0; i < dataLen; i++)
-            {
-                bool newline = i > 0 && i % 16 == 0;
-                printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen]);
-            }
-            printf("\n");
-
-            // reed-solomon error correction
-            printf("\tecc: ");
-
-            for(int i = 0; i < eccLen; i++)
-            {
-                bool newline = i > 0 && i % 16 == 0;
-                printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
-            }
-            printf("\n");
+            dumpPacket("", packetBuf, longPkt);
 
             // should be a delay here...
             writeQueue.push_back(0x03);
@@ -226,8 +194,51 @@ void RFSerial::networkUpdate()
 
     if(len > 0)
     {
+        bool longPkt = buf[7] == 0xC8;
+        dumpPacket(" (from socket)", buf + 8, longPkt);
+
         // blindly forward to cybiko, what could possibly go wrong?
         for(int i = 0; i < len; i++)
             writeQueue.push_back(buf[i]);
     }
+}
+
+void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
+{
+    uint32_t dstAddr = (packetBuf[0] << 24) | (packetBuf[1] << 16) | (packetBuf[2] << 8) | (packetBuf[3]);
+    uint32_t srcAddr = (packetBuf[4] << 24) | (packetBuf[5] << 16) | (packetBuf[6] << 8) | (packetBuf[7]);
+    int channel = packetBuf[8] & 0x3F; // top bits = 0xC0?
+    uint8_t type = packetBuf[9] >> 5; // ping, message, ack, sys
+    uint8_t flags = packetBuf[9] & 0x1F; // ?  
+    uint8_t index = packetBuf[10]; //?
+    uint8_t unk11 = packetBuf[11];
+    uint16_t dataCRC = (packetBuf[12] << 8) | packetBuf[13];
+    uint16_t headCRC = (packetBuf[14] << 8) | packetBuf[15];
+    int headLen = 16;
+    int dataLen = longPkt ? 104 : 14;
+    int eccLen = longPkt ? 80 : 20;
+
+    auto srcAddrStr = cyIDToString(srcAddr);
+    auto dstAddrStr = cyIDToString(dstAddr);
+
+    printf("RFSerial packet from %08X(@%s) to %08X(@%s) on chan %i%s\n", srcAddr, srcAddrStr.c_str(), dstAddr, dstAddrStr.c_str(), channel, suffix);
+    printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
+    printf("\tdata:");
+
+    for(int i = 0; i < dataLen; i++)
+    {
+        bool newline = i > 0 && i % 16 == 0;
+        printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen]);
+    }
+    printf("\n");
+
+    // reed-solomon error correction
+    printf("\tecc: ");
+
+    for(int i = 0; i < eccLen; i++)
+    {
+        bool newline = i > 0 && i % 16 == 0;
+        printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
+    }
+    printf("\n");
 }

@@ -21,6 +21,8 @@ public:
     void networkUpdate();
 
 private:
+    void dumpPacket(const char *suffix, uint8_t *buf, bool longPkt);
+
     uint8_t buf[202];
     int bufOffset = 0;
     int messageLen = 0;
