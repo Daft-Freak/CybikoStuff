@@ -109,10 +109,13 @@ protected:
 class Port1Classic final : public IODevice
 {
 public:
+    Port1Classic(bool cartPresent) : cartPresent(cartPresent) {}
+
     uint8_t read(uint32_t time) override
     {
         // otherwise it immediately goes into standby mode
-        return 1 << 3;
+        // additionally pull up bit 4 if cart is present
+        return 1 << 3 | (cartPresent ? 1 << 4 : 0);
     }
 
     void write(uint8_t val, uint32_t time) override
@@ -122,6 +125,9 @@ public:
     void setDirection(uint8_t dir, uint32_t time) override
     {
     }
+
+private:
+    bool cartPresent;
 };
 
 // flash cs is on 4
@@ -301,6 +307,7 @@ int main(int argc, char *args[])
     std::string cyIDStr;
     bool usbip = false;
     bool mp3SD = false;
+    bool expCart = false;
 
     bool benchmarkMode = false;
     int64_t benchmarkCycles = 0;
@@ -333,6 +340,8 @@ int main(int argc, char *args[])
             usbip = true;
         else if(arg == "--mp3-sd")
             mp3SD = true; // this is only the SD-card part of the MP3 player
+        else if(arg == "--exp-cart")
+            expCart = true; 
     }
 
     // default to giving classic/xtreme different ids
@@ -367,6 +376,7 @@ int main(int argc, char *args[])
     // classic
     std::unique_ptr<SerialFlash> serialFlash;
     std::unique_ptr<IODevice> classicPort3, classicPortF;
+    std::unique_ptr<MemoryDevice> cartRAM; // in expansion cart
 
     if(xtreme)
     {
@@ -417,6 +427,7 @@ int main(int argc, char *args[])
         extRAM = std::make_unique<MemoryDevice>(0x3FFFF);
         flash = std::make_unique<MemoryDevice>(0x3FFFF);
         keyboard = std::make_unique<ClassicKeyboardDevice>();
+        cartRAM = std::make_unique<MemoryDevice>(0x3FFFF);
 
         rtc = std::make_unique<PCF8593>(0, 1);
 
@@ -424,6 +435,10 @@ int main(int argc, char *args[])
         cpu.setExternalArea(1, extRAM.get()); //external ram
         cpu.setExternalArea(3, lcd.get()); //lcd
         cpu.setExternalArea(7, keyboard.get()); // keyboard
+
+        // TODO: this should also add two more serial flash chips with CS on P2_1 and P1_4
+        if(expCart)
+            cpu.setExternalArea(2, cartRAM.get()); 
 
         // serial ports
         serialFlash = std::make_unique<SerialFlash>();
@@ -434,7 +449,7 @@ int main(int argc, char *args[])
         cpu.setSerialDevice(2, bootSerial.get());
 
         // IO ports
-        port1 = std::make_unique<Port1Classic>();
+        port1 = std::make_unique<Port1Classic>(expCart);
         classicPort3 = std::make_unique<Port3Classic>(*serialFlash);
         classicPortF = std::make_unique<PortFClassic>();
 
@@ -481,6 +496,9 @@ int main(int argc, char *args[])
             cpu.setADCValue(3, 0);
             bootSerial->getSD().setFile(deviceDataPath + "sdcard.bin");
         }
+
+        if(expCart)
+            std::cerr << "Memory expansion not supported on xtreme\n";
     }
     else
     {
