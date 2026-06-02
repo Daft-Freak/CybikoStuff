@@ -339,6 +339,12 @@ int main(int argc, char *args[])
     if(cyIDStr.empty())
         cyIDStr = xtreme ? "FAKECYB" : "FAKECYA";
 
+    // setup dir for device-specific data
+    deviceDataPath = dataPath + cyIDStr + "/";
+
+    if(!std::filesystem::exists(deviceDataPath))
+        std::filesystem::create_directory(deviceDataPath);
+
     // CPU init
     H8CPU cpu;
 
@@ -389,10 +395,6 @@ int main(int argc, char *args[])
         cpu.setSerialDevice(2, rfSerial.get());
 
         // load rom/flash/ram dumps
-        deviceDataPath = dataPath + cyIDStr + "/";
-
-        if(!std::filesystem::exists(deviceDataPath))
-            std::filesystem::create_directory(deviceDataPath);
 
         if(!cpu.loadROM((dataPath + "xtreme-rom.bin").c_str()))
         {
@@ -449,7 +451,7 @@ int main(int argc, char *args[])
         }
 
         // try to load updated file first, fallback to base flash
-        if(!serialFlash->loadFile((dataPath + "classic-flash-persist.bin").c_str()))
+        if(!serialFlash->loadFile((deviceDataPath + "classic-flash-persist.bin").c_str()))
             serialFlash->loadFile((dataPath + "classic-flash.bin").c_str());
         flash->loadFile((dataPath + "classic-cyos.bin").c_str());
     }
@@ -602,7 +604,7 @@ int main(int argc, char *args[])
         if(xtreme)
             extRAM->saveFile((deviceDataPath + "exram.bin").c_str());
         else
-            serialFlash->saveFile((dataPath + "classic-flash-persist.bin").c_str());
+            serialFlash->saveFile((deviceDataPath + "classic-flash-persist.bin").c_str());
     }
 
     SDL_DestroyTexture(texture);
