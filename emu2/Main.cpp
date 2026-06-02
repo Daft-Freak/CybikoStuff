@@ -335,6 +335,10 @@ int main(int argc, char *args[])
             mp3SD = true; // this is only the SD-card part of the MP3 player
     }
 
+    // default to giving classic/xtreme different ids
+    if(cyIDStr.empty())
+        cyIDStr = xtreme ? "FAKECYB" : "FAKECYA";
+
     // CPU init
     H8CPU cpu;
 
@@ -457,9 +461,6 @@ int main(int argc, char *args[])
         static_cast<BootSerial *>(bootSerial.get())->attachPort(serialPortFile);
 
     // change id for fun
-    // default to giving classic/xtreme different ids
-    if(cyIDStr.empty())
-        cyIDStr = xtreme ? "FAKECYB" : "FAKECYA";
 
     if(xtreme)
         setXtremeCyID(flash, cyIDFromString(cyIDStr));
