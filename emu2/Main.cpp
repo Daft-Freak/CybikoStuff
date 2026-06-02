@@ -349,7 +349,7 @@ int main(int argc, char *args[])
     H8CPU cpu;
 
     auto lcd = std::make_unique<LCDDevice>();
-    auto extRAM = std::make_unique<MemoryDevice>();
+    std::unique_ptr<MemoryDevice> extRAM;
     std::unique_ptr<MemoryDevice> flash;
     std::unique_ptr<KeyboardDevice> keyboard;
 
@@ -370,6 +370,7 @@ int main(int argc, char *args[])
 
     if(xtreme)
     {
+        extRAM = std::make_unique<MemoryDevice>();
         flash = std::make_unique<MemoryDevice>(0x7FFFF);
         keyboard = std::make_unique<XtremeKeyboardDevice>();
 
@@ -413,14 +414,13 @@ int main(int argc, char *args[])
     else
     {
         // this is a bit wrong as I mostly have xtremes
-
+        extRAM = std::make_unique<MemoryDevice>(0x3FFFF);
         flash = std::make_unique<MemoryDevice>(0x3FFFF);
         keyboard = std::make_unique<ClassicKeyboardDevice>();
 
         rtc = std::make_unique<PCF8593>(0, 1);
 
         cpu.setExternalArea(0, flash.get());
-        // should be 256K
         cpu.setExternalArea(1, extRAM.get()); //external ram
         cpu.setExternalArea(3, lcd.get()); //lcd
         cpu.setExternalArea(7, keyboard.get()); // keyboard
