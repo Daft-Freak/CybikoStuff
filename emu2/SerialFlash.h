@@ -20,6 +20,8 @@ public:
     bool loadFile(const char *filename, int offset = 0);
     void saveFile(const char *filename, int offset = 0, int length = -1);
 
+    uint8_t *getData() {return mem;}
+
 private:
     bool cs = false;
     bool didWrite = false;
