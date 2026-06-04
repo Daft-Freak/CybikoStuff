@@ -228,25 +228,106 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
     auto dstAddrStr = cyIDToString(dstAddr);
 
     printf("RFSerial packet from %08X(@%s) to %08X(@%s) on chan %i%s\n", srcAddr, srcAddrStr.c_str(), dstAddr, dstAddrStr.c_str(), channel, suffix);
-    printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
-    printf("\tdata:");
-
-    for(int i = 0; i < dataLen; i++)
+    
+    if(type == 0) // ping
     {
-        bool newline = i > 0 && i % 16 == 0;
-        printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen]);
+        auto data = packetBuf + headLen;
+        printf("\tping, flags %X head unk %X %X data unk %02X %02X %02X %02X\n", flags, index, unk11, data[0], data[1], data[2], data[3]);
+        
+        int nameLen = strnlen(reinterpret_cast<char *>(data + 4), 8);
+        int age = data[12] & 0x7F;
+        bool gender = data[12] & 0x80;
+        
+        printf("\tname %.*s age %i gender: %s\n", nameLen, data + 4, age, gender ? "female" : "male");
     }
-    printf("\n");
-
-    // reed-solomon error correction
-    printf("\tecc: ");
-
-    for(int i = 0; i < eccLen; i++)
+    else if(type == 1) // message
     {
-        bool newline = i > 0 && i % 16 == 0;
-        printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
+        auto data = packetBuf + headLen;
+        uint16_t flags = data[0] << 8 | data[1];
+        uint16_t msgId = data[2] << 8 | data[3];
+        uint32_t param0 = 0, param1 = 0;
+        uint8_t bufLen = 0;
+        int offset = 4;
+
+        printf("\tmessage, flags %04X id %04X\n", flags, msgId);
+
+        printf("\t");
+
+        // params
+        if(flags & (1 << 11))
+        {
+            param0 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
+            offset += 4;
+            printf("param0 %08X ", param0);
+        }
+
+        if(flags & (1 << 10))
+        {
+            param1 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
+            offset += 4;
+            printf("param1 %08X ", param1);
+        }
+
+        if(flags & (1 << 13))
+        {
+            // TODO: untested
+            auto name = reinterpret_cast<char *>(data) + offset;
+            // app name
+            int len = strnlen(reinterpret_cast<char *>(data) + offset, dataLen - offset);
+            offset += len;
+            printf("app name %s\n", name);
+        }
+        else
+        {
+            // app name is 16-bit index
+            // TODO: 2 is finder, 37 is chat?
+            uint16_t appName = data[offset + 0] << 8 | data[offset + 1];
+            offset += 2;
+            printf("app %04X ", appName);
+        }
+
+        if(flags & (1 << 12))
+        {
+            bufLen = data[offset++];
+            printf("buf size %u ", bufLen);
+        }
+
+        printf("\n");
+
+        // dump buffer
+        if(flags & (1 << 12))
+        {
+            printf("\tbuf:");
+            for(int i = 0; i < bufLen; i++)
+            {
+                bool newline = i > 0 && i % 16 == 0;
+                printf("%s%02X", newline ? "\n\t     " : " ", data[i + offset]);
+            }
+            printf("\n");
+        }
     }
-    printf("\n");
+    else
+    {
+        printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
+        printf("\tdata:");
+
+        for(int i = 0; i < dataLen; i++)
+        {
+            bool newline = i > 0 && i % 16 == 0;
+            printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen]);
+        }
+        printf("\n");
+
+        // reed-solomon error correction
+        printf("\tecc: ");
+
+        for(int i = 0; i < eccLen; i++)
+        {
+            bool newline = i > 0 && i % 16 == 0;
+            printf("%s%02X", newline ? "\n\t      " : " ", packetBuf[i + headLen + dataLen]);
+        }
+        printf("\n");
+    }
 }
 
 void RFSerial::eccInit()
