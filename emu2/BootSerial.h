@@ -25,9 +25,10 @@ private:
     {
         Status_Idle          = 1 << 0,
         Status_AppCmd        = 1 << 1,
-        Status_Read_Multi    = 1 << 2,
-        Status_Writing       = 1 << 3,
-        Status_WriteGotToken = 1 << 4,
+        Status_MultiBlock    = 1 << 2,
+        Status_Reading       = 1 << 3,
+        Status_Writing       = 1 << 4,
+        Status_WriteGotToken = 1 << 5,
     };
 
     bool didWrite = false;

@@ -95,7 +95,7 @@ void SDCard::write(uint8_t val)
 
                     case 12: // stop transmission
                     {
-                        status &= ~Status_Read_Multi;
+                        status &= ~(Status_Reading | Status_Writing | Status_MultiBlock);
                         readQueue.clear();
 
                         readQueue.push_back(0xFF); // stuff byte
@@ -115,7 +115,7 @@ void SDCard::write(uint8_t val)
                         readQueue.push_back(0x00);
 
                         readAddress = arg;
-                        status |= Status_Read_Multi;
+                        status |= Status_Reading | Status_MultiBlock;
 
                         sendBlock();
                         break;
@@ -124,6 +124,14 @@ void SDCard::write(uint8_t val)
                         readQueue.push_back(0x00);
                         writeAddress = arg;
                         status |= Status_Writing;
+                        status &= ~Status_WriteGotToken;
+                        writeOffset = 0;
+                        break;
+
+                    case 25: // write multiple blocks
+                        readQueue.push_back(0x00);
+                        writeAddress = arg;
+                        status |= Status_Writing | Status_MultiBlock;
                         status &= ~Status_WriteGotToken;
                         writeOffset = 0;
                         break;
@@ -147,7 +155,9 @@ void SDCard::write(uint8_t val)
     // block writes
     else if(status & Status_Writing)
     {
-        if(!(status & Status_WriteGotToken) && val == 0xFE)
+        uint8_t token = (status & Status_MultiBlock) ? 0xFC : 0xFE;
+
+        if(!(status & Status_WriteGotToken) && val == token)
             status |= Status_WriteGotToken;
         else if(status & Status_WriteGotToken)
         {
@@ -157,27 +167,38 @@ void SDCard::write(uint8_t val)
                 //readQueue.push_back(0xFF); // while writing this byte (not needed as RX is disabled here?..)
                 readQueue.push_back(0x05); // data accepted
                 readQueue.push_back(0x00); // busy
-                status &= ~Status_Writing;
+
+                if(status & Status_MultiBlock)
+                {
+                    writeOffset = 0;
+                    status &= ~Status_WriteGotToken;
+                }
+                else
+                    status &= ~Status_Writing;
 
                 file.clear();
                 file.seekp(writeAddress);
                 file.write(reinterpret_cast<char *>(writeBuf), 512);
+
+                writeAddress += 512;
             }
             else 
             {
-
                 if(writeOffset < 512)
                     writeBuf[writeOffset] = val;
                 // keep going for 2 bytes to ignore the CRC
                 writeOffset++;
             }
         }
+        else if((status & Status_MultiBlock) && val == 0xFD) // stop token
+            status &= ~(Status_Writing | Status_MultiBlock);
     }
     else if((val & 0xC0) == 0x40) // start command if valid
         cmd[cmdOff++] = val;
 
     // continue reading blocks
-    if((status & Status_Read_Multi) && readQueue.empty())
+    int multiRead = Status_Reading | Status_MultiBlock;
+    if((status & multiRead) == multiRead && readQueue.empty())
         sendBlock();
 }
 
