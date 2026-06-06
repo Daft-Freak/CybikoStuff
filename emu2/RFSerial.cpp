@@ -216,8 +216,8 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
     int channel = packetBuf[8] & 0x3F; // top bits = 0xC0?
     uint8_t type = packetBuf[9] >> 5; // ping, message, ack, sys
     uint8_t flags = packetBuf[9] & 0x1F; // ?  
-    uint8_t index = packetBuf[10]; //?
-    uint8_t unk11 = packetBuf[11];
+    uint8_t index = packetBuf[10]; // 0 = single packet, something else for pings?
+    uint8_t sequence = packetBuf[11]; // 0 = no ack
     uint16_t dataCRC = (packetBuf[12] << 8) | packetBuf[13];
     uint16_t headCRC = (packetBuf[14] << 8) | packetBuf[15];
     int headLen = 16;
@@ -232,7 +232,7 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
     if(type == 0) // ping
     {
         auto data = packetBuf + headLen;
-        printf("\tping, flags %X head unk %X %X data unk %02X %02X %02X %02X\n", flags, index, unk11, data[0], data[1], data[2], data[3]);
+        printf("\tping, flags %X head unk %X %X data unk %02X %02X %02X %02X\n", flags, index, sequence, data[0], data[1], data[2], data[3]);
         
         int nameLen = strnlen(reinterpret_cast<char *>(data + 4), 8);
         int age = data[12] & 0x7F;
@@ -244,58 +244,81 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
     {
         auto data = packetBuf + headLen;
         uint16_t flags = data[0] << 8 | data[1];
-        uint16_t msgId = data[2] << 8 | data[3];
         uint32_t param0 = 0, param1 = 0;
         uint8_t bufLen = 0;
-        int offset = 4;
+        int offset = 2;
 
-        printf("\tmessage, flags %04X id %04X\n", flags, msgId);
+        printf("\tmessage, flags %04X index %i seq %i", flags, index, sequence);
 
-        printf("\t");
-
-        // params
-        if(flags & (1 << 11))
+        if(index <= 1)
         {
-            param0 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
-            offset += 4;
-            printf("param0 %08X ", param0);
-        }
-
-        if(flags & (1 << 10))
-        {
-            param1 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
-            offset += 4;
-            printf("param1 %08X ", param1);
-        }
-
-        if(flags & (1 << 13))
-        {
-            // TODO: untested
-            auto name = reinterpret_cast<char *>(data) + offset;
-            // app name
-            int len = strnlen(reinterpret_cast<char *>(data) + offset, dataLen - offset);
-            offset += len;
-            printf("app name %s\n", name);
-        }
-        else
-        {
-            // app name is 16-bit index
-            // TODO: 2 is finder, 37 is chat?
-            uint16_t appName = data[offset + 0] << 8 | data[offset + 1];
+            // id
+            uint16_t msgId = data[2] << 8 | data[3];
             offset += 2;
-            printf("app %04X ", appName);
-        }
 
-        if(flags & (1 << 12))
+            printf(" id %04X\n\t", msgId);
+
+            // params
+            if(flags & (1 << 11))
+            {
+                param0 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
+                offset += 4;
+                printf("param0 %08X ", param0);
+            }
+
+            if(flags & (1 << 10))
+            {
+                param1 = data[offset + 0] << 24 | data[offset + 1] << 16 | data[offset + 2] << 8 | data[offset + 3];
+                offset += 4;
+                printf("param1 %08X ", param1);
+            }
+
+            if(flags & (1 << 13))
+            {
+                // TODO: untested
+                auto name = reinterpret_cast<char *>(data) + offset;
+                // app name
+                int len = strnlen(reinterpret_cast<char *>(data) + offset, dataLen - offset);
+                offset += len;
+                printf("app name %s\n", name);
+            }
+            else
+            {
+                // app name is 16-bit index
+                // TODO: 2 is finder, 37 is chat?
+                uint16_t appName = data[offset + 0] << 8 | data[offset + 1];
+                offset += 2;
+                printf("app %04X ", appName);
+            }
+
+            if(flags & (1 << 12))
+            {
+                // if it's an incomplete buffer, the length is the rest of the packet
+                if(flags & (1 << 9))
+                    bufLen = dataLen - offset;
+                else
+                    bufLen = data[offset++];
+
+                printf("buf size %u ", bufLen);
+            }
+        }
+        else if(flags & (1 << 8))
         {
+            // final
             bufLen = data[offset++];
-            printf("buf size %u ", bufLen);
+            printf(" buf size %u", bufLen);
+        }
+        else if(flags & (1 << 9))
+        {
+            // more data
+            bufLen = dataLen - 2;
+            printf(" buf size %u", bufLen);
         }
 
         printf("\n");
 
         // dump buffer
-        if(flags & (1 << 12))
+        if(bufLen)
         {
             printf("\tbuf:");
             for(int i = 0; i < bufLen; i++)
