@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+uint32_t crc16(uint8_t *data, int length);
+
 uint32_t crc32(uint8_t *data, int length);
 
 uint16_t fsChecksum(uint8_t *data, int length);
