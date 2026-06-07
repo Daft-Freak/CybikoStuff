@@ -2148,6 +2148,10 @@ void H8CPU::Serial::updateClockDiv()
         if(mode & SMR_CHR)
             bits--; // 7-bit char
 
+        // slow down slightly by having an idle cycle
+        // maybe a hack, but fixes some RF stuff
+        bits++;
+
         clocksPerBit *= 8;
     }
 
