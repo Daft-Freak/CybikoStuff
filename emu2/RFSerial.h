@@ -42,6 +42,8 @@ private:
     // network
     int recvFd, sendFd;
     void *sendAddr; // avoiding network headers
+
+    uint8_t lastHead[16]; // used to avoid immediately receiving our own packet
 };
 
 #endif

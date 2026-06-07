@@ -141,6 +141,8 @@ void RFSerial::write(uint8_t val)
                 outBuf[7] = longPkt ? 0xC8 : 0x32;
                 memcpy(outBuf + 8, packetBuf, headLen + dataLen);
 
+                memcpy(lastHead, packetBuf, 16); // store header
+
                 sendto(sendFd, outBuf, bufSize, 0, (sockaddr *)sendAddr, sizeof(sockaddr_in6));
 
                 delete[] outBuf;
@@ -196,6 +198,10 @@ void RFSerial::networkUpdate()
     if(len > 0)
     {
         bool longPkt = buf[7] == 0xC8;
+
+        // discard our own packets (or at least, the last sent one)
+        if(memcmp(buf + 8, lastHead, 16) == 0)
+            return;
 
         // fill in the ECC data
         eccCalc(buf + 8, longPkt);
