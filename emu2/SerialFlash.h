@@ -35,6 +35,8 @@ private:
     int len = 0, off = 0;
 
     static const int pageSize = 264;
+    static const int numPages = 2048;
+    static const int totalBytes = pageSize * numPages;
 
     uint32_t readAddr = 0xFFFFFFFF;
     int readOff = 0;
@@ -43,7 +45,7 @@ private:
     int writeOff = 0;
     uint8_t writeBuf[pageSize];
 
-    uint8_t mem[0x84000];
+    uint8_t mem[totalBytes];
 };
 
 #endif

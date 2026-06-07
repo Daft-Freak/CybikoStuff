@@ -148,7 +148,7 @@ bool SerialFlash::loadFile(const char *filename, int offset)
     if(!file)
         return false;
 
-    file.read(reinterpret_cast<char *>(mem + offset), 0x84000 - offset);
+    file.read(reinterpret_cast<char *>(mem + offset), totalBytes - offset);
 
     std::cout << "Read " << file.gcount() << " bytes into serial flash" << std::endl;
 
@@ -162,7 +162,7 @@ void SerialFlash::saveFile(const char *filename, int offset, int length)
         return;
 
     if(length == -1)
-        length = 0x84000 - offset;
+        length = totalBytes - offset;
 
     file.write(reinterpret_cast<char *>(mem + offset), length);
 }
