@@ -21,6 +21,9 @@ public:
     bool loadFile(const char *filename, int offset = 0);
     void saveFile(const char *filename, int offset = 0, int length = -1);
 
+    int getPageSize() const {return pageSize;}
+    int getNumPages() const {return numPages;}
+
     uint8_t *getData() {return mem;}
 
 private:

@@ -240,10 +240,12 @@ static void setClassicCyID(std::unique_ptr<SerialFlash> &serialFlash, uint32_t c
     // patch the id in cyos.cfg in the filesystem
     auto fsData = serialFlash->getData();
 
+    int blockDataLen = serialFlash->getPageSize() - 10;
+
     // TODO: query block count/size?
-    for(int blockIndex = 5; blockIndex < 2048; blockIndex++)
+    for(int blockIndex = 5; blockIndex < serialFlash->getNumPages(); blockIndex++)
     {
-        auto blockData = fsData + blockIndex * 264;
+        auto blockData = fsData + blockIndex * serialFlash->getPageSize();
 
         // check valid bit
         if(!(blockData[8] & 0x80))
@@ -265,7 +267,7 @@ static void setClassicCyID(std::unique_ptr<SerialFlash> &serialFlash, uint32_t c
             fileData[5] = cyID;
 
             // crc
-            auto crc = ~crc32(blockData + 8, 254);
+            auto crc = ~crc32(blockData + 8, blockDataLen);
             blockData[0] = crc >> 24;
             blockData[1] = crc >> 16;
             blockData[2] = crc >>  8;
