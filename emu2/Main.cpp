@@ -109,17 +109,19 @@ protected:
 class Port1Classic final : public IODevice
 {
 public:
-    Port1Classic(bool cartPresent) : cartPresent(cartPresent) {}
+    Port1Classic(SerialFlash *cartSerialFlash1) : cartSerialFlash1(cartSerialFlash1) {}
 
     uint8_t read(uint32_t time) override
     {
         // otherwise it immediately goes into standby mode
         // additionally pull up bit 4 if cart is present
-        return 1 << 3 | (cartPresent ? 1 << 4 : 0);
+        return 1 << 3 | (cartSerialFlash1 ? 1 << 4 : 0);
     }
 
     void write(uint8_t val, uint32_t time) override
     {
+        if(cartSerialFlash1)
+            cartSerialFlash1->setCS(val & (1 << 4));
     }
 
     void setDirection(uint8_t dir, uint32_t time) override
@@ -127,7 +129,31 @@ public:
     }
 
 private:
-    bool cartPresent;
+    SerialFlash *cartSerialFlash1;
+};
+
+class Port2Classic final : public IODevice
+{
+public:
+    Port2Classic(SerialFlash *cartSerialFlash1) : cartSerialFlash0(cartSerialFlash1) {}
+
+    uint8_t read(uint32_t time) override
+    {
+        return 0;
+    }
+
+    void write(uint8_t val, uint32_t time) override
+    {
+        if(cartSerialFlash0)
+            cartSerialFlash0->setCS(val & (1 << 1));
+    }
+
+    void setDirection(uint8_t dir, uint32_t time) override
+    {
+    }
+
+private:
+    SerialFlash *cartSerialFlash0;
 };
 
 // flash cs is on 4
@@ -170,6 +196,51 @@ protected:
     void setDirection(uint8_t dir, uint32_t time) override
     {
     }
+};
+
+// wrapper for multiple flash devices
+class MultiSerialFlash final : public SerialDevice
+{
+public:
+    uint8_t read() override
+    {
+        for(auto &dev : flashDevices)
+        {
+            if(!dev->getCS())
+                return dev->read();
+
+        }
+
+        return 0xFF;
+    }
+
+    void write(uint8_t val) override
+    {
+        for(auto &dev : flashDevices)
+        {
+            if(!dev->getCS())
+                dev->write(val);
+        }
+    }
+
+    bool canRead() override
+    {
+        for(auto &dev : flashDevices)
+        {
+            if(!dev->getCS())
+                return dev->canRead();
+        }
+
+        return false;
+    }
+
+    void addFlashDevice(SerialFlash *dev)
+    {
+        flashDevices.emplace_back(dev);
+    }
+
+private:
+    std::list<SerialFlash *> flashDevices;
 };
 
 static void setXtremeBatteryLevel(H8CPU &cpu, std::unique_ptr<MemoryDevice> &extRAM)
@@ -376,8 +447,9 @@ int main(int argc, char *args[])
     std::unique_ptr<IODevice> miscPortA;
 
     // classic
-    std::unique_ptr<SerialFlash> serialFlash;
-    std::unique_ptr<IODevice> classicPort3, classicPortF;
+    std::unique_ptr<SerialFlash> serialFlash, cartSerialFlash[2];
+    std::unique_ptr<MultiSerialFlash> multiFlash; // for cart
+    std::unique_ptr<IODevice> classicPort2, classicPort3, classicPortF;
     std::unique_ptr<MemoryDevice> cartRAM; // in expansion cart
 
     if(xtreme)
@@ -438,7 +510,6 @@ int main(int argc, char *args[])
         cpu.setExternalArea(3, lcd.get()); //lcd
         cpu.setExternalArea(7, keyboard.get()); // keyboard
 
-        // TODO: this should also add two more serial flash chips with CS on P2_1 and P1_4
         if(expCart)
             cpu.setExternalArea(2, cartRAM.get()); 
 
@@ -447,11 +518,30 @@ int main(int argc, char *args[])
         bootSerial = std::make_unique<BootSerial>(2);
 
         cpu.setSerialDevice(0, rfSerial.get());
-        cpu.setSerialDevice(1, serialFlash.get());
         cpu.setSerialDevice(2, bootSerial.get());
 
+        if(expCart)
+        {
+            // two more serial flash chips
+            for(auto &flash : cartSerialFlash)
+                flash = std::make_unique<SerialFlash>();
+
+            multiFlash = std::make_unique<MultiSerialFlash>();
+            multiFlash->addFlashDevice(serialFlash.get());
+            multiFlash->addFlashDevice(cartSerialFlash[0].get());
+            multiFlash->addFlashDevice(cartSerialFlash[1].get());
+
+            cpu.setSerialDevice(1, multiFlash.get());
+
+            // attach CS for first cart flash (second is handled later)
+            classicPort2 = std::make_unique<Port2Classic>(cartSerialFlash[0].get());
+            cpu.addIODevice(IOPort::_2, classicPort2.get());
+        }
+        else
+            cpu.setSerialDevice(1, serialFlash.get());
+
         // IO ports
-        port1 = std::make_unique<Port1Classic>(expCart);
+        port1 = std::make_unique<Port1Classic>(cartSerialFlash[1].get());
         classicPort3 = std::make_unique<Port3Classic>(*serialFlash);
         classicPortF = std::make_unique<PortFClassic>();
 
@@ -471,6 +561,27 @@ int main(int argc, char *args[])
         if(!serialFlash->loadFile((deviceDataPath + "classic-flash-persist.bin").c_str()))
             serialFlash->loadFile((dataPath + "classic-flash.bin").c_str());
         flash->loadFile((dataPath + "classic-cyos.bin").c_str());
+
+        // expansion flash
+        if(expCart)
+        {
+            for(int i = 0; i < 2; i++)
+            {
+                if(!cartSerialFlash[i]->loadFile((deviceDataPath + "classic-flash-cart" + std::to_string(i) + ".bin").c_str()))
+                {
+                    // initialise all fs blocks as a format would
+                    static const uint8_t pageHeader264[]{0x5E, 0xC9, 0x8D, 0x30, 0x00, 0x01, 0xEF, 0x7C};
+
+                    auto data = cartSerialFlash[i]->getData();
+
+                    for(int page = 0; page < cartSerialFlash[i]->getNumPages(); page++)
+                    {
+                        auto blockData = data + page * cartSerialFlash[i]->getPageSize();
+                        memcpy(blockData, pageHeader264, sizeof(pageHeader264));
+                    }
+                }
+            }
+        }
     }
 
     // even xtreme can still boot over serial
@@ -624,7 +735,15 @@ int main(int argc, char *args[])
         if(xtreme)
             extRAM->saveFile((deviceDataPath + "exram.bin").c_str());
         else
+        {
             serialFlash->saveFile((deviceDataPath + "classic-flash-persist.bin").c_str());
+        
+            if(expCart)
+            {
+                for(int i = 0; i < 2; i++)
+                    cartSerialFlash[i]->saveFile((deviceDataPath + "classic-flash-cart" + std::to_string(i) + ".bin").c_str());
+            }
+        }
     }
 
     SDL_DestroyTexture(texture);
