@@ -15,6 +15,7 @@ public:
 
     bool canRead() override;
 
+    bool getCS() const {return cs;}
     void setCS(bool val);
 
     bool loadFile(const char *filename, int offset = 0);
@@ -23,7 +24,7 @@ public:
     uint8_t *getData() {return mem;}
 
 private:
-    bool cs = false;
+    bool cs = true; // active low
     bool didWrite = false;
     bool wait = false;
 
