@@ -49,6 +49,7 @@ cd ../../
 
 #gcc
 cd $GCC_VERSION
+./contrib/download_prerequisites
 mkdir -p build
 cd build
 # libstdc++ disabled due to internal compiler error
