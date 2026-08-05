@@ -1,3 +1,7 @@
+cmake_minimum_required(VERSION 3.13)
+
+project(cybiko)
+
 if(NOT DEFINED LIB_ONCE)
 	set(LIB_ONCE TRUE)
 
