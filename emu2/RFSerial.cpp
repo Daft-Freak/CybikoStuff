@@ -337,7 +337,7 @@ void RFSerial::dumpPacket(const char *suffix, uint8_t *packetBuf, bool longPkt)
     }
     else
     {
-        printf("\ttype %i flags? %x index? %i unk11 %x data crc %04X header CRC %04X\n", type, flags, index, unk11, dataCRC, headCRC);
+        printf("\ttype %i flags? %x index? %i seq? %i data crc %04X header CRC %04X\n", type, flags, index, sequence, dataCRC, headCRC);
         printf("\tdata:");
 
         for(int i = 0; i < dataLen; i++)
